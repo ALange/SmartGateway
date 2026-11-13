@@ -1,0 +1,47 @@
+services:
+  smartgateway:
+    build: .
+    ports:
+      - "${SG_PORT:-8080}:8080"
+    environment:
+      SG_ADMIN_PASSWORD: "${SG_ADMIN_PASSWORD:-}"   # set to require login for the UI + management API
+      SG_ADMIN_USER: "${SG_ADMIN_USER:-admin}"
+      SG_SECRET_KEY: "${SG_SECRET_KEY:-}"            # encrypts upstream API keys; default: auto-generated /data/secret.key
+      SG_CORS_ORIGINS: "${SG_CORS_ORIGINS:-}"        # e.g. https://app.example.com (or *) for browser clients of /gw and /v1
+      SG_REDIS_URL: "${SG_REDIS_URL:-}"              # optional: preconfigure the Redis response cache (can also be set in Settings)
+      SG_DEFAULT_SLOTS: "4"
+    volumes:
+      - sg-data:/data
+    restart: unless-stopped
+
+  # ---- optional Redis for the response cache: `docker compose --profile redis up -d`
+  # then in the UI: Settings -> Redis URL = redis://redis:6379/0   (or set SG_REDIS_URL=redis://redis:6379/0)
+  redis:
+    profiles: [redis]
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - sg-redis:/data
+    restart: unless-stopped
+
+  # ---- demo upstreams: `docker compose --profile demo up` ----
+  # add them in the UI as http://mock-a:9000/v1 etc.
+  mock-a:
+    profiles: [demo]
+    build: ./tools/mock-llm
+    environment: { MOCK_NAME: a, MODELS: "reasoner-r1:reasoning", SLOTS: "2", EXPOSE_PROPS: "1", TOKEN_DELAY: "0.08" }
+    ports: ["9001:9000"]
+  mock-b:
+    profiles: [demo]
+    build: ./tools/mock-llm
+    environment: { MOCK_NAME: b, MODELS: "vl-chat:vision,plain-chat", SLOTS: "4", TOKEN_DELAY: "0.06" }
+    ports: ["9002:9000"]
+  mock-c:
+    profiles: [demo]
+    build: ./tools/mock-llm
+    environment: { MOCK_NAME: c, MODELS: "bge-embed:embedding", SLOTS: "8" }
+    ports: ["9003:9000"]
+
+volumes:
+  sg-data:
+  sg-redis:

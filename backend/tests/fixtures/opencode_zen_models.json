@@ -1,0 +1,752 @@
+{
+ "object": "list",
+ "data": [
+  {
+   "id": "big-pickle",
+   "object": "model",
+   "created": 1793782002,
+   "owned_by": "opencode",
+   "name": "Big Pickle",
+   "type": "chat",
+   "family": "big-pickle",
+   "open_weights": false,
+   "knowledge": "2025-01",
+   "release_date": "2025-10-17",
+   "last_updated": "2025-10-17",
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "capabilities": {
+    "tools": {
+     "supported": true
+    },
+    "reasoning": {
+     "supported": true
+    },
+    "structured_output": true,
+    "temperature": true,
+    "system_updates": false,
+    "effort_updates": false
+   },
+   "limit": {
+    "context": 200000,
+    "input": 160000,
+    "output": 32000
+   },
+   "cost": {
+    "text": {
+     "input": {
+      "price": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "output": {
+      "price": 0
+     }
+    }
+   },
+   "api": {
+    "chat-completions": {
+     "base_url": "https://opencode.ai/inference/openai/v1",
+     "sdk": {
+      "aisdk": "@ai-sdk/openai-compatible",
+      "opencodeai": "@opencode/ai/providers/openai-compatible"
+     },
+     "compatibility": {
+      "reasoning_field": "reasoning_content"
+     },
+     "capabilities": {
+      "tools": {
+       "updates": false
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "deepseek-v4.1-flash-free",
+   "object": "model",
+   "created": 1793782002,
+   "owned_by": "opencode",
+   "name": "DeepSeek V4.1 Flash Free",
+   "canonical_id": "deepseek/deepseek-v4.1-flash",
+   "type": "chat",
+   "family": "deepseek-flash",
+   "open_weights": true,
+   "knowledge": "2025-05",
+   "release_date": "2026-09-10",
+   "last_updated": "2026-09-10",
+   "modalities": {
+    "input": [
+     "text",
+     "image/jpeg",
+     "image/png",
+     "image/gif",
+     "image/webp"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "capabilities": {
+    "tools": {
+     "supported": true
+    },
+    "reasoning": {
+     "supported": true,
+     "toggle": true,
+     "effort": [
+      "low",
+      "high",
+      "max"
+     ]
+    },
+    "structured_output": true,
+    "temperature": true,
+    "top_p": true,
+    "top_k": true,
+    "system_updates": true,
+    "effort_updates": false
+   },
+   "limit": {
+    "context": 200000,
+    "output": 32000
+   },
+   "cost": {
+    "text": {
+     "input": {
+      "price": 0,
+      "cache": {
+       "read": 0
+      }
+     },
+     "output": {
+      "price": 0
+     }
+    }
+   },
+   "api": {
+    "chat-completions": {
+     "base_url": "https://opencode.ai/inference/openai/v1",
+     "sdk": {
+      "aisdk": "@ai-sdk/openai-compatible",
+      "opencodeai": "@opencode/ai/providers/openai-compatible"
+     },
+     "compatibility": {
+      "reasoning_field": "reasoning_content"
+     },
+     "capabilities": {
+      "tools": {
+       "choice": [
+        "auto",
+        "none",
+        "required",
+        "tool"
+       ],
+       "updates": false
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "claude-opus-5-5",
+   "object": "model",
+   "created": 1793782002,
+   "owned_by": "opencode",
+   "name": "Claude Opus 5.5",
+   "canonical_id": "anthropic/claude-opus-5-5",
+   "type": "chat",
+   "family": "claude-opus",
+   "open_weights": false,
+   "knowledge": "2026-06",
+   "release_date": "2026-09-22",
+   "last_updated": "2026-09-22",
+   "modalities": {
+    "input": [
+     "text",
+     "image/jpeg",
+     "image/png",
+     "image/gif",
+     "image/webp",
+     "application/pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "capabilities": {
+    "tools": {
+     "supported": true
+    },
+    "reasoning": {
+     "supported": true,
+     "effort": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+     ]
+    },
+    "cache": {
+     "explicit": {
+      "ttl": [
+       "5m",
+       "1h"
+      ],
+      "max_breakpoints": 4,
+      "targets": [
+       "tools",
+       "system",
+       "messages"
+      ],
+      "min_tokens": 512
+     }
+    },
+    "temperature": false,
+    "top_p": false,
+    "top_k": false,
+    "system_updates": true,
+    "effort_updates": true
+   },
+   "limit": {
+    "context": 1000000,
+    "output": 128000
+   },
+   "cost": {
+    "text": {
+     "input": {
+      "price": 4,
+      "cache": {
+       "read": 0.2,
+       "write": 5
+      }
+     },
+     "output": {
+      "price": 20
+     }
+    }
+   },
+   "api": {
+    "messages": {
+     "base_url": "https://opencode.ai/inference/anthropic/v1",
+     "sdk": {
+      "aisdk": "@ai-sdk/anthropic",
+      "opencodeai": "@opencode/ai/providers/anthropic"
+     },
+     "capabilities": {
+      "tools": {
+       "strict": true,
+       "choice": [
+        "auto",
+        "none"
+       ],
+       "search": true,
+       "updates": true
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "gemini-3.5-flash",
+   "object": "model",
+   "created": 1793782002,
+   "owned_by": "opencode",
+   "name": "Gemini 3.5 Flash",
+   "canonical_id": "google/gemini-3.5-flash",
+   "type": "chat",
+   "family": "gemini-flash",
+   "open_weights": false,
+   "knowledge": "2025-01",
+   "release_date": "2026-05-19",
+   "last_updated": "2026-05-19",
+   "modalities": {
+    "input": [
+     "text",
+     "image/png",
+     "image/jpeg",
+     "image/webp",
+     "image/heic",
+     "image/heif",
+     "video/mp4",
+     "video/mpeg",
+     "video/mov",
+     "video/avi",
+     "video/x-flv",
+     "video/mpg",
+     "video/webm",
+     "video/wmv",
+     "video/3gpp",
+     "audio/wav",
+     "audio/mp3",
+     "audio/aiff",
+     "audio/aac",
+     "audio/ogg",
+     "audio/flac",
+     "audio/mpeg",
+     "audio/m4a",
+     "audio/l16",
+     "audio/opus",
+     "audio/alaw",
+     "audio/mulaw",
+     "audio/webm",
+     "application/pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "capabilities": {
+    "tools": {
+     "supported": true
+    },
+    "reasoning": {
+     "supported": true,
+     "effort": [
+      "minimal",
+      "low",
+      "medium",
+      "high"
+     ]
+    },
+    "structured_output": true,
+    "temperature": true,
+    "top_p": true,
+    "top_k": true,
+    "system_updates": false,
+    "effort_updates": false
+   },
+   "limit": {
+    "context": 1048576,
+    "output": 65536
+   },
+   "cost": {
+    "text": {
+     "input": {
+      "price": 1.5,
+      "cache": {
+       "read": 0.15
+      }
+     },
+     "output": {
+      "price": 9
+     }
+    },
+    "audio": {
+     "input": {
+      "price": 1.5
+     }
+    }
+   },
+   "api": {
+    "generate-content": {
+     "base_url": "https://opencode.ai/inference/google/v1beta",
+     "sdk": {
+      "aisdk": "@ai-sdk/google",
+      "opencodeai": "@opencode/ai/providers/google"
+     },
+     "capabilities": {
+      "tools": {
+       "choice": [
+        "auto",
+        "none",
+        "required",
+        "tool"
+       ],
+       "updates": false
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "glm-5.3",
+   "object": "model",
+   "created": 1793782002,
+   "owned_by": "opencode",
+   "name": "GLM-5.3",
+   "canonical_id": "zhipuai/glm-5.3",
+   "type": "chat",
+   "family": "glm",
+   "open_weights": true,
+   "release_date": "2026-08-14",
+   "last_updated": "2026-08-14",
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "capabilities": {
+    "tools": {
+     "supported": true
+    },
+    "reasoning": {
+     "supported": true,
+     "effort": [
+      "low",
+      "high",
+      "max"
+     ]
+    },
+    "cache": {
+     "implicit": true
+    },
+    "structured_output": true,
+    "temperature": true,
+    "top_p": true,
+    "top_k": true,
+    "system_updates": true,
+    "effort_updates": false
+   },
+   "limit": {
+    "context": 1000000,
+    "output": 131072
+   },
+   "cost": {
+    "text": {
+     "input": {
+      "price": 1.4,
+      "cache": {
+       "read": 0.26
+      }
+     },
+     "output": {
+      "price": 4.4
+     }
+    }
+   },
+   "api": {
+    "chat-completions": {
+     "base_url": "https://opencode.ai/inference/openai/v1",
+     "sdk": {
+      "aisdk": "@ai-sdk/openai-compatible",
+      "opencodeai": "@opencode/ai/providers/openai-compatible"
+     },
+     "compatibility": {
+      "reasoning_field": "reasoning_content"
+     },
+     "capabilities": {
+      "tools": {
+       "choice": [
+        "auto"
+       ],
+       "updates": false
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "gpt-5.5",
+   "object": "model",
+   "created": 1793782002,
+   "owned_by": "opencode",
+   "name": "GPT-5.5",
+   "canonical_id": "openai/gpt-5.5",
+   "type": "chat",
+   "family": "gpt",
+   "open_weights": false,
+   "knowledge": "2025-12-01",
+   "release_date": "2026-04-23",
+   "last_updated": "2026-04-23",
+   "modalities": {
+    "input": [
+     "text",
+     "image/jpeg",
+     "image/png",
+     "image/gif",
+     "image/webp",
+     "application/pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "capabilities": {
+    "tools": {
+     "supported": true
+    },
+    "reasoning": {
+     "supported": true,
+     "effort": [
+      "none",
+      "low",
+      "medium",
+      "high",
+      "xhigh"
+     ]
+    },
+    "structured_output": true,
+    "temperature": false,
+    "top_p": false,
+    "top_k": false,
+    "system_updates": true,
+    "effort_updates": false
+   },
+   "limit": {
+    "context": 1050000,
+    "input": 922000,
+    "output": 128000
+   },
+   "cost": {
+    "text": {
+     "input": {
+      "price": 5,
+      "cache": {
+       "read": 0.5
+      },
+      "overrides": [
+       {
+        "when": {
+         "context": {
+          "gt": 272000
+         }
+        },
+        "price": 10,
+        "cache": {
+         "read": 1
+        }
+       }
+      ]
+     },
+     "output": {
+      "price": 30,
+      "overrides": [
+       {
+        "when": {
+         "context": {
+          "gt": 272000
+         }
+        },
+        "price": 45
+       }
+      ]
+     }
+    }
+   },
+   "api": {
+    "responses": {
+     "base_url": "https://opencode.ai/inference/openai/v1",
+     "sdk": {
+      "aisdk": "@ai-sdk/openai",
+      "opencodeai": "@opencode/ai/providers/openai/responses"
+     },
+     "capabilities": {
+      "tools": {
+       "strict": true,
+       "choice": [
+        "auto",
+        "none",
+        "required",
+        "tool"
+       ],
+       "search": true,
+       "freeform": [
+        "text",
+        "lark",
+        "regex"
+       ],
+       "updates": true
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "kimi-k3",
+   "object": "model",
+   "created": 1793782002,
+   "owned_by": "opencode",
+   "name": "Kimi K3",
+   "canonical_id": "moonshotai/kimi-k3",
+   "type": "chat",
+   "family": "kimi-k3",
+   "open_weights": true,
+   "release_date": "2026-07-16",
+   "last_updated": "2026-07-16",
+   "modalities": {
+    "input": [
+     "text",
+     "image/jpeg",
+     "image/png",
+     "image/gif",
+     "image/webp",
+     "image/bmp",
+     "image/heic",
+     "image/heif",
+     "video/mp4",
+     "video/mpeg",
+     "video/mov",
+     "video/avi",
+     "video/x-flv",
+     "video/mpg",
+     "video/webm",
+     "video/wmv",
+     "video/3gpp"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "capabilities": {
+    "tools": {
+     "supported": true
+    },
+    "reasoning": {
+     "supported": true,
+     "toggle": true,
+     "effort": [
+      "low",
+      "high",
+      "max"
+     ]
+    },
+    "cache": {
+     "implicit": true
+    },
+    "structured_output": true,
+    "temperature": false,
+    "top_p": false,
+    "top_k": false,
+    "system_updates": true,
+    "effort_updates": false
+   },
+   "limit": {
+    "context": 1048576,
+    "output": 131072
+   },
+   "cost": {
+    "text": {
+     "input": {
+      "price": 3,
+      "cache": {
+       "read": 0.3,
+       "write": 3
+      }
+     },
+     "output": {
+      "price": 15
+     }
+    }
+   },
+   "api": {
+    "chat-completions": {
+     "base_url": "https://opencode.ai/inference/openai/v1",
+     "sdk": {
+      "aisdk": "@ai-sdk/openai-compatible",
+      "opencodeai": "@opencode/ai/providers/openai-compatible"
+     },
+     "compatibility": {
+      "reasoning_field": "reasoning_content"
+     },
+     "capabilities": {
+      "tools": {
+       "strict": true,
+       "choice": [
+        "auto",
+        "none",
+        "required"
+       ],
+       "updates": true
+      }
+     }
+    }
+   }
+  },
+  {
+   "id": "minimax-m3",
+   "object": "model",
+   "created": 1793782002,
+   "owned_by": "opencode",
+   "name": "MiniMax-M3",
+   "canonical_id": "minimax/MiniMax-M3",
+   "type": "chat",
+   "family": "minimax",
+   "open_weights": true,
+   "release_date": "2026-06-01",
+   "last_updated": "2026-06-01",
+   "modalities": {
+    "input": [
+     "text",
+     "image/jpeg",
+     "image/png",
+     "image/gif",
+     "image/webp",
+     "video/mp4",
+     "video/x-msvideo",
+     "video/quicktime",
+     "video/x-matroska"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "capabilities": {
+    "tools": {
+     "supported": true
+    },
+    "reasoning": {
+     "supported": true,
+     "toggle": true
+    },
+    "cache": {
+     "implicit": true
+    },
+    "temperature": true,
+    "top_p": true,
+    "top_k": false,
+    "system_updates": false,
+    "effort_updates": false
+   },
+   "limit": {
+    "context": 512000,
+    "output": 128000
+   },
+   "cost": {
+    "text": {
+     "input": {
+      "price": 0.3,
+      "cache": {
+       "read": 0.06
+      }
+     },
+     "output": {
+      "price": 1.2
+     }
+    }
+   },
+   "api": {
+    "chat-completions": {
+     "base_url": "https://opencode.ai/inference/openai/v1",
+     "sdk": {
+      "aisdk": "@ai-sdk/openai-compatible",
+      "opencodeai": "@opencode/ai/providers/openai-compatible"
+     },
+     "compatibility": {
+      "reasoning_field": "reasoning_content"
+     },
+     "capabilities": {
+      "tools": {
+       "choice": [
+        "auto"
+       ],
+       "updates": false
+      }
+     }
+    }
+   }
+  }
+ ]
+}

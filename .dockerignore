@@ -1,0 +1,14 @@
+**/node_modules
+**/dist
+**/__pycache__
+**/.pytest_cache
+data
+.git
+backups/
+dist-deploy
+.env
+.env.*
+!.env.example
+.github
+*.key
+*.db

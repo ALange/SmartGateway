@@ -1,0 +1,107 @@
+import time
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import case, func
+from sqlmodel import Session, select
+
+from ..compression import pipeline
+from ..compression.insights import build_compression_response, build_context_response
+from ..db import get_session
+from ..models import CompressionEvent, RequestLog
+
+router = APIRouter(prefix="/api/insights")
+RANGES = {"1h": 3600, "24h": 86400, "7d": 7 * 86400, "30d": 30 * 86400}
+SCAN_LIMIT = 5000
+
+
+def _since(range_: str) -> float:
+    if range_ not in RANGES:
+        raise HTTPException(400, f"range must be one of {list(RANGES)}")
+    return time.time() - RANGES[range_]
+
+
+def _group(s: Session, col, since: float, gw: Optional[int]) -> list[dict]:
+    fresh = CompressionEvent.cache_hit == False  # noqa: E712
+    q = select(col, func.count(), func.sum(case((CompressionEvent.cache_hit == True, 1), else_=0)),  # noqa: E712
+               func.sum(case((fresh, CompressionEvent.tokens_before - CompressionEvent.tokens_after), else_=0)),
+               func.sum(case((fresh & CompressionEvent.compression_ratio.is_not(None), CompressionEvent.compression_ratio), else_=0)),
+               func.sum(case((fresh & CompressionEvent.compression_ratio.is_not(None), 1), else_=0))).where(CompressionEvent.ts >= since).group_by(col)
+    if gw:
+        q = q.where(CompressionEvent.gateway_id == gw)
+    return [{"key": k, "events": int(n or 0), "cache_hit_events": int(h or 0), "tokens_saved": int(ts or 0),
+             "sum_ratio": float(sr or 0), "ratio_count": int(rc or 0)} for k, n, h, ts, sr, rc in s.exec(q).all()]
+
+
+@router.get("/compression")
+def compression_insights(range: str = "24h", gateway_id: Optional[int] = None, s: Session = Depends(get_session)):
+    since = _since(range)
+    by_type = _group(s, CompressionEvent.content_type, since, gateway_id)
+    by_comp = _group(s, CompressionEvent.compressor_used, since, gateway_id)
+    ev = [CompressionEvent.ts >= since] + ([CompressionEvent.gateway_id == gateway_id] if gateway_id else [])
+    events = int(s.exec(select(func.count()).where(*ev)).one() or 0)
+    hits = int(s.exec(select(func.count()).where(*ev, CompressionEvent.cache_hit == True)).one() or 0)  # noqa: E712
+    applied = int(s.exec(select(func.count()).where(*ev, CompressionEvent.applied == True)).one() or 0)  # noqa: E712
+    fresh = s.exec(select(func.coalesce(func.sum(CompressionEvent.tokens_before - CompressionEvent.tokens_after), 0),
+                          func.coalesce(func.sum(CompressionEvent.compression_ratio), 0), func.count(CompressionEvent.compression_ratio))
+                   .where(*ev, CompressionEvent.cache_hit == False)).one()  # noqa: E712
+    rq = [RequestLog.ts >= since] + ([RequestLog.gateway_id == gateway_id] if gateway_id else [])
+    requests = int(s.exec(select(func.count()).where(*rq)).one() or 0)
+    not_sent = int(s.exec(select(func.coalesce(func.sum(RequestLog.tokens_saved), 0)).where(*rq, RequestLog.compress_mode == "on")).one() or 0)
+    potential = int(s.exec(select(func.coalesce(func.sum(RequestLog.tokens_saved), 0)).where(*rq, RequestLog.compress_mode == "shadow")).one() or 0)
+    avg_al = s.exec(select(func.avg(RequestLog.alignment_score)).where(*rq, RequestLog.alignment_score.is_not(None))).one()
+    # alignment details
+    buckets = {"90-100": 0, "70-89": 0, "40-69": 0, "0-39": 0}
+    for sc in s.exec(select(RequestLog.alignment_score).where(*rq, RequestLog.alignment_score.is_not(None)).limit(SCAN_LIMIT)).all():
+        buckets["90-100" if sc >= 90 else "70-89" if sc >= 70 else "40-69" if sc >= 40 else "0-39"] += 1
+    labels: dict[str, int] = {}
+    with_findings = 0
+    for lab in s.exec(select(RequestLog.volatile_labels).where(*rq, RequestLog.volatile_findings > 0).limit(SCAN_LIMIT)).all():
+        with_findings += 1
+        for k, v in (lab or {}).items():
+            labels[k] = labels.get(k, 0) + int(v)
+    variants = [{"public_model": pm, "variants": int(v), "requests": int(n)} for pm, v, n in s.exec(
+        select(RequestLog.public_model, func.count(func.distinct(RequestLog.prefix_hash)), func.count()).where(*rq, RequestLog.prefix_hash.is_not(None)).group_by(RequestLog.public_model)).all()]
+    return build_compression_response(
+        range_=range, requests=requests, events=events, cache_hit_events=hits, applied_events=applied,
+        fresh_tokens_saved=int(fresh[0] or 0), sum_ratio=float(fresh[1] or 0), ratio_count=int(fresh[2] or 0),
+        tokens_not_sent=not_sent, potential_not_sent=potential, avg_alignment=float(avg_al) if avg_al is not None else None,
+        by_content_type=by_type, by_compressor=by_comp,
+        alignment={"avgScore": float(avg_al) if avg_al is not None else None, "scoreBuckets": buckets, "volatileLabels": labels,
+                   "requestsWithFindings": with_findings, "promptVariants": variants},
+        live_cache=pipeline.get_cache().stats())
+
+
+@router.get("/context")
+def context_insights(range: str = "24h", gateway_id: Optional[int] = None, top: int = 10, session_gap: int = 30, s: Session = Depends(get_session)):
+    since = _since(range)
+    top = max(1, min(50, top))
+    q = select(RequestLog).where(RequestLog.ts >= since, RequestLog.ctx_system_chars.is_not(None)).order_by(RequestLog.id.desc()).limit(SCAN_LIMIT + 1)
+    if gateway_id:
+        q = q.where(RequestLog.gateway_id == gateway_id)
+    rows = s.exec(q).all()
+    truncated = len(rows) > SCAN_LIMIT
+    data = [r.model_dump(include={"id", "ts", "session_key", "prompt_tokens", "completion_tokens", "ctx_system_chars", "ctx_tools_chars", "ctx_messages_chars", "ctx_blocks"}) for r in rows[:SCAN_LIMIT]]
+    return build_context_response(data, range_=range, top=top, session_gap_minutes=max(1, session_gap), truncated=truncated)
+
+
+@router.get("/performance")
+async def performance(minutes: int = 60, s: Session = Depends(get_session)):
+    """Generation / prompt-processing speed and cache effectiveness per gateway and per upstream model."""
+    from ..models import Endpoint, Gateway, Model
+    from ..perf_insights import build_performance
+    from ..router.cache import cache as cache_facade
+
+    minutes = max(1, min(minutes, 43200))
+    until = time.time()
+    since = until - minutes * 60
+    rows = s.exec(select(RequestLog).where(RequestLog.ts >= since).order_by(RequestLog.id.desc()).limit(20001)).all()
+    truncated = len(rows) > 20000
+    cols = {"ts", "gateway_id", "model_id", "ok", "stream", "cached", "cache_state", "attempts", "prompt_tokens", "completion_tokens", "ttft_ms", "total_ms", "queue_ms"}
+    data = [r.model_dump(include=cols) for r in rows[:20000]]
+    gateways = {g.id: g.name for g in s.exec(select(Gateway)).all()}
+    eps = {e.id: e.name for e in s.exec(select(Endpoint)).all()}
+    models = {m.id: {"upstream": m.upstream_id, "endpoint": eps.get(m.endpoint_id, "")} for m in s.exec(select(Model)).all()}
+    out = build_performance(data, gateways, models, since=since, until=until, truncated=truncated)
+    out["cache_live"] = await cache_facade.stats()
+    return out

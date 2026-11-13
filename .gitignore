@@ -1,0 +1,35 @@
+# Secrets and local config - never commit
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.crt
+secret.key
+
+# Runtime data and backups (SQLite DBs hold encrypted upstream keys and hashed API keys)
+data/
+backups/
+*.db
+*.db-journal
+*.sqlite*
+
+# Build output and deploy images
+dist/
+dist-deploy/
+*.tar
+*.tar.gz
+
+# Dependencies and caches
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.log

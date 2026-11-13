@@ -1,0 +1,128 @@
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { ArrowUpRight, Clock } from "lucide-react";
+import { api, PALETTE } from "../api";
+import { useLive } from "../live";
+import { fmt, ms, PageHeader, StatusDot } from "../components/ui";
+import { CachePanel, ModelSpeedTable, PerformancePanel, SpeedChart } from "../components/PerfPanels";
+
+const RANGES: [string, number][] = [["15 min", 15], ["1 hour", 60], ["6 hours", 360], ["24 hours", 1440]];
+const tip = { contentStyle: { background: "#10132a", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, fontSize: 12 }, cursor: { fill: "rgba(255,255,255,0.04)" } };
+
+export default function Dashboard() {
+  const [minutes, setMinutes] = useState(60);
+  const [s, setS] = useState<any>(null);
+  const [eps, setEps] = useState<any[]>([]);
+  const [gws, setGws] = useState<any[]>([]);
+  const [comp, setComp] = useState<any>(null);
+  const [perf, setPerf] = useState<any>(null);
+  const { snapshot } = useLive();
+  useEffect(() => {
+    const load = () => { api(`/api/stats?minutes=${minutes}`).then(setS); api("/api/endpoints").then(setEps); api("/api/gateways").then(setGws); api(`/api/insights/performance?minutes=${minutes}`).then(setPerf).catch(() => {}); api(`/api/insights/compression?range=${minutes <= 60 ? "1h" : minutes <= 1440 ? "24h" : "7d"}`).then(setComp).catch(() => {}); };
+    load(); const t = setInterval(load, 4000); return () => clearInterval(t);
+  }, [minutes]);
+  if (!s) return null;
+
+  const donut = s.by_endpoint.map((e: any, i: number) => ({ ...e, fill: PALETTE[i % PALETTE.length] }));
+  const top = s.by_model[0];
+  const bars = s.timeline.map((b: any) => ({ ...b, label: new Date(b.t * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), ok: b.requests - b.errors }));
+  const totalSlots = eps.reduce((a, e) => a + e.models.reduce((x: number, m: any) => x + m.max_slots, 0), 0);
+  const busy = snapshot ? Object.values<any>(snapshot.models).reduce((a, m) => a + m.in_flight, 0) : 0;
+
+  return (
+    <div className="fadein">
+      <PageHeader title="Dashboard" sub="Traffic, health and capacity across all gateways."
+        actions={<div className="flex gap-1 rounded-lg border border-white/5 bg-white/[0.03] p-1">
+          {RANGES.map(([l, v]) => <button key={v} onClick={() => setMinutes(v)} className={`rounded-md px-3.5 py-1.5 text-sm ${minutes === v ? "bg-white/10 text-white" : "text-[#8b91b5]"}`}>{l}</button>)}</div>} />
+
+      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-5">
+        {[
+          ["Requests", fmt(s.total), `${s.rps} req/s`],
+          ["Success rate", (s.success_rate * 100).toFixed(1) + "%", `${s.errors} errors`],
+          ["Latency p50 / p95", `${ms(s.p50_ms)}`, `p95 ${ms(s.p95_ms)}`],
+          ["Tokens generated", fmt(s.completion_tokens), `${fmt(s.prompt_tokens)} prompt`],
+          ["Saved by compression", comp ? fmt(comp.totals.tokensNotSent) : "–", comp && comp.totals.potentialTokensNotSent ? `${fmt(comp.totals.potentialTokensNotSent)} more in shadow mode` : "prompt tokens not sent"],
+        ].map(([t, v, sub]) => (
+          <div key={t} className="card card-pad"><div className="text-sm text-[#8b91b5]">{t}</div><div className="mt-1.5 text-2xl font-semibold">{v}</div><div className="mt-1 text-xs text-[#6b7196]">{sub}</div></div>
+        ))}
+      </div>
+
+      <div className="mt-5 grid gap-5 xl:grid-cols-[1fr_1fr_1.4fr]">
+        <div className="card card-pad">
+          <h3 className="text-base font-semibold">Traffic by endpoint</h3>
+          <div className="relative mx-auto mt-2 h-[190px]">
+            {donut.length ? <ResponsiveContainer><PieChart>
+              <Pie data={donut} dataKey="requests" nameKey="name" innerRadius={60} outerRadius={80} paddingAngle={1} cornerRadius={0} stroke="none">
+                {donut.map((d: any, i: number) => <Cell key={i} fill={d.fill} />)}</Pie><Tooltip {...tip} /></PieChart></ResponsiveContainer>
+              : <div className="flex h-full items-center justify-center text-sm text-[#6b7196]">No traffic yet</div>}
+            {donut.length > 0 && <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center"><div className="text-2xl font-semibold">{fmt(s.total)}</div><div className="text-xs text-[#8b91b5]">requests</div></div>}
+          </div>
+          <div className="mt-3 space-y-2.5">{donut.map((d: any) => (
+            <div key={d.endpoint_id} className="flex items-center justify-between text-sm"><span className="flex items-center gap-2"><i className="h-2 w-2 rounded-full" style={{ background: d.fill }} />{d.name}</span><span>{fmt(d.requests)}</span></div>))}</div>
+        </div>
+
+        <div className="card card-pad">
+          <h3 className="text-base font-semibold">Endpoint health</h3>
+          <div className="mt-4 space-y-4">
+            {eps.map((e) => {
+              const st = snapshot?.endpoints?.[e.id]?.status || e.status;
+              const slots = e.models.reduce((a: number, m: any) => a + m.max_slots, 0);
+              const used = e.models.reduce((a: number, m: any) => a + (snapshot?.models?.[m.id]?.in_flight || 0), 0);
+              return (<div key={e.id}>
+                <div className="flex items-center justify-between text-sm"><span className="flex items-center gap-2"><StatusDot status={st} />{e.name}</span><span className="text-[#8b91b5]">{used}/{slots}</span></div>
+                <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/5"><div className="h-full rounded-full" style={{ width: `${slots ? (used / slots) * 100 : 0}%`, background: "#3b6fd8" }} /></div>
+              </div>);
+            })}
+            {eps.length === 0 && <div className="text-sm text-[#6b7196]">No endpoints configured.</div>}
+          </div>
+          <div className="mt-6 border-t border-white/5 pt-4 text-xs text-[#8b91b5]">Slot utilization: {busy}/{totalSlots} slots busy</div>
+        </div>
+
+        <div className="card card-pad">
+          <h3 className="text-base font-semibold">Requests over time</h3>
+          <div className="mt-3 h-[260px]">
+            <ResponsiveContainer><BarChart data={bars} barSize={14}>
+              <defs><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#3b6fd8" /><stop offset="100%" stopColor="#3b6fd8" /></linearGradient></defs>
+              <XAxis dataKey="label" tick={{ fill: "#6b7196", fontSize: 11 }} axisLine={false} tickLine={false} interval={Math.floor(bars.length / 6)} />
+              <YAxis tick={{ fill: "#6b7196", fontSize: 11 }} axisLine={false} tickLine={false} width={30} allowDecimals={false} />
+              <Tooltip {...tip} />
+              <Bar dataKey="ok" stackId="a" fill="url(#bg)" name="ok" radius={[2, 2, 0, 0]} />
+              <Bar dataKey="errors" stackId="a" fill="#d9776f" name="errors" radius={[2, 2, 0, 0]} />
+            </BarChart></ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      {perf && (<>
+        <div className="mt-5 grid gap-5 xl:grid-cols-[1fr_2fr]"><CachePanel perf={perf} /><PerformancePanel perf={perf} /></div>
+        <div className="mt-5 grid gap-5 xl:grid-cols-2"><SpeedChart perf={perf} /><ModelSpeedTable perf={perf} /></div>
+      </>)}
+
+      <div className="mt-5 grid gap-5 xl:grid-cols-[1.3fr_1fr]">
+        <div className="relative min-h-[220px] overflow-hidden rounded-lg border border-white/[0.08] p-6"
+          style={{ background: "#12151c" }}>
+          <span className="chip border border-white/10 text-[#8a92a6]">Insights</span>
+          <p className="mt-10 max-w-lg text-lg leading-snug">
+            {s.total === 0 ? "Send traffic to a gateway to see routing insights here."
+              : `${top.model} handled ${Math.round((top.requests / s.total) * 100)}% of requests with ${(s.success_rate * 100).toFixed(0)}% success; median TTFT ${ms(s.ttft_p50_ms)}.`}
+          </p>
+          <Link to="/gateways" className="absolute bottom-5 right-5 rounded-lg bg-white/[0.06] p-2.5 hover:bg-white/10"><ArrowUpRight size={18} /></Link>
+        </div>
+        <div className="card card-pad">
+          <h3 className="text-base font-semibold">Gateways</h3>
+          <div className="mt-3 space-y-2">
+            {gws.map((g) => {
+              const q = snapshot?.queue?.[g.id] || 0;
+              return <Link key={g.id} to={`/gateways/${g.id}`} className="flex items-center justify-between rounded-lg border border-white/5 bg-white/[0.02] px-4 py-3 hover:bg-white/[0.05]">
+                <div><div className="font-medium">{g.name}</div><div className="mono text-xs text-[#8b91b5]">{g.models.map((m: any) => m.public_name).join(", ") || "no models"}</div></div>
+                {q > 0 ? <span className="chip text-[#d1a553]" style={{ background: "#d1a55322" }}><Clock size={12} /> {q} queued</span> : <ArrowUpRight size={16} className="text-[#6b7196]" />}
+              </Link>;
+            })}
+            {gws.length === 0 && <div className="text-sm text-[#6b7196]">No gateways yet.</div>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
