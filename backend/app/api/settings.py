@@ -24,12 +24,19 @@ class SettingsIn(BaseModel):
     cache_default_ttl: Optional[int] = None
     cache_max_entry_kb: Optional[int] = None
     cache_fallback_memory: Optional[bool] = None
+    log_retention_days: Optional[int] = None          # 0 = keep forever
+    compression_retention_days: Optional[int] = None
+    stress_retention_days: Optional[int] = None
+    audit_retention_days: Optional[int] = None
 
 
 class TestIn(BaseModel):
     url: Optional[str] = None       # None/"" = the saved URL
     username: Optional[str] = None  # None = the saved username
     password: Optional[str] = None  # None = the saved password (only when testing the saved URL), "" = no password
+
+
+RETENTION_KEYS = ("log_retention_days", "compression_retention_days", "stress_retention_days", "audit_retention_days")
 
 
 def view() -> dict:
@@ -40,6 +47,7 @@ def view() -> dict:
         "redis_url_source": st.source_of_url(), "redis_key_prefix": s["redis_key_prefix"],
         "cache_default_ttl": s["cache_default_ttl"], "cache_max_entry_kb": s["cache_max_entry_kb"],
         "cache_fallback_memory": s["cache_fallback_memory"],
+        **{k: s[k] for k in RETENTION_KEYS},
     }
 
 
@@ -74,6 +82,9 @@ async def put_settings(body: SettingsIn):
         raise HTTPException(400, "Default TTL must be between 1 second and 30 days")
     if "cache_max_entry_kb" in vals and not (1 <= vals["cache_max_entry_kb"] <= 65536):
         raise HTTPException(400, "Max entry size must be between 1 KB and 64 MB")
+    for k in RETENTION_KEYS:
+        if k in vals and not (0 <= vals[k] <= 3650):
+            raise HTTPException(400, "Retention must be between 0 (keep forever) and 3650 days")
     merged = {**st.get_all(), **vals}
     if merged["redis_enabled"] and not merged["redis_url"]:
         raise HTTPException(400, "Enter a Redis URL before enabling Redis")

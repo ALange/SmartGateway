@@ -194,3 +194,19 @@ class StressRun(SQLModel, table=True):
     stop_reason: Optional[str] = None
     config: dict = Field(default_factory=dict, sa_column=Column(JSON))
     result: dict = Field(default_factory=dict, sa_column=Column(JSON))
+
+
+class AuditEvent(SQLModel, table=True):
+    """One successful change made through the admin API. Stores field names only, never values."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    ts: float = Field(default_factory=time.time, index=True)
+    actor: str = ""
+    ip: str = ""
+    action: str = Field(default="", index=True)
+    target_type: str = Field(default="", index=True)
+    target_id: str = ""
+    method: str = ""
+    path: str = ""
+    status: int = 200
+    fields: Optional[list] = Field(default=None, sa_column=Column(JSON))
+    summary: str = ""

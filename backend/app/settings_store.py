@@ -23,6 +23,10 @@ DEFAULTS: dict[str, Any] = {
     "compress_mode": "off",          # off | shadow | on  (global default; per-model override possible)
     "compress_config": {},           # overrides of ContentRouterConfig (partial dict)
     "context_insights_enabled": True,
+    "log_retention_days": 0,         # 0 = keep forever
+    "compression_retention_days": 0,
+    "stress_retention_days": 0,
+    "audit_retention_days": 0,
     "unified_enabled": False,        # expose several gateways as one endpoint (/unified/v1), model name = gateway name
     "unified_keys": [],              # API keys of the unified endpoint: [{id, name, key_hash, prefix, created_at}] (hashed, plaintext shown once)
     "unified_models": [],            # [{"model_id": int, "name": public name}]: upstream models exposed directly (backed by a hidden internal gateway)

@@ -15,8 +15,8 @@ from sqlmodel import select
 
 from pydantic import BaseModel
 
-from . import config, crypto, proxy
-from .api import compression as compression_api, content_filters as content_filters_api, endpoints, gateways, insights as insights_api, settings as settings_api, stats, stress as stress_api, unified as unified_api
+from . import audit, config, crypto, proxy, retention
+from .api import compression as compression_api, content_filters as content_filters_api, endpoints, gateways, insights as insights_api, maintenance as maintenance_api, settings as settings_api, stats, stress as stress_api, unified as unified_api
 from .db import engine, init_db, session
 from .models import Endpoint
 from .router import health
@@ -33,7 +33,7 @@ async def lifespan(app: FastAPI):
     from .router.scheduler import scheduler
     await cache.reconfigure(settings_store.get_all())
     tasks = [asyncio.create_task(health.loop()), asyncio.create_task(health.slot_sync_loop()),
-             asyncio.create_task(scheduler.run_ticker())]
+             asyncio.create_task(scheduler.run_ticker()), asyncio.create_task(retention.loop())]
     yield
     for t in tasks:
         t.cancel()
@@ -103,10 +103,21 @@ async def guard(request: Request, call_next):
     if config.ADMIN_PASSWORD and p.startswith("/api/") and p not in ("/api/login", "/api/session", "/api/ws"):
         if not request_authed(request.headers, request.cookies):
             return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+    audited = None if is_gateway else audit.classify(request.method, p)
+    fields: list = []
+    if audited and "json" in request.headers.get("content-type", ""):
+        fields = audit.body_fields(await request.body())
     resp = await call_next(request)
+    if audited and resp.status_code < 400:
+        audit.record(admin_actor(), request.client.host if request.client else "", audited["action"], audited["target_type"],
+                     audited["target_id"], resp.status_code, request.method, p, fields)
     for k, v in cors.items():
         resp.headers[k] = v
     return resp
+
+
+def admin_actor() -> str:
+    return os.environ.get("SG_ADMIN_USER", "admin") if config.ADMIN_PASSWORD else "open-access"
 
 
 class LoginIn(BaseModel):
@@ -132,8 +143,10 @@ def login(body: LoginIn, request: Request):
         and secrets.compare_digest(body.username, os.environ.get("SG_ADMIN_USER", "admin")))
     if not ok:
         f[0] += 1
+        audit.record(body.username[:60], ip, "login failed", "session", status=401, method="POST", path="/api/login")
         return JSONResponse({"detail": "Invalid credentials"}, status_code=401)
     f[0] = 0
+    audit.record(body.username[:60], ip, "login", "session", method="POST", path="/api/login")
     r = JSONResponse({"ok": True})
     secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
     r.set_cookie(COOKIE, make_session(), max_age=SESSION_TTL, httponly=True, samesite="lax", secure=secure)
@@ -155,6 +168,7 @@ def healthz():
 app.include_router(endpoints.router)
 app.include_router(gateways.router)
 app.include_router(stats.router)
+app.include_router(maintenance_api.router)
 app.include_router(settings_api.router)
 app.include_router(compression_api.router)
 app.include_router(content_filters_api.router)

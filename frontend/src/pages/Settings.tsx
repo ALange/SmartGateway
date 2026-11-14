@@ -4,6 +4,7 @@ import { api } from "../api";
 import { fmt, PageHeader } from "../components/ui";
 import CompressionSettings from "../components/CompressionSettings";
 import UnifiedEndpoint from "../components/UnifiedEndpoint";
+import Retention from "../components/Retention";
 
 export default function Settings() {
   const [s, setS] = useState<any>(null);
@@ -127,6 +128,7 @@ export default function Settings() {
         ].map(([k, v]) => <div key={k} className="card card-pad"><div className="text-sm text-[#8a92a6]">{k}</div><div className="mt-1.5 text-2xl font-semibold">{v}</div></div>)}
       </div>
       <CompressionSettings />
+      <Retention />
     </div>
   );
 }

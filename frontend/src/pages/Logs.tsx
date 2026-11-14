@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, PALETTE } from "../api";
 import { ms, PageHeader } from "../components/ui";
+import AuditLog from "../components/AuditLog";
 
 const OUTCOMES: Record<string, [string, string, string]> = {
   complete: ["Complete", "#5fb585", "The model finished normally."],
@@ -23,6 +24,7 @@ export default function Logs() {
   const [gid, setGid] = useState("");
   const [errs, setErrs] = useState(false);
   const [probs, setProbs] = useState(false);
+  const [tab, setTab] = useState<"requests" | "audit">("requests");
   useEffect(() => { api("/api/gateways").then(setGws); api("/api/endpoints").then(setEps); }, []);
   useEffect(() => {
     const load = () => api(`/api/logs?limit=200${gid ? `&gateway_id=${gid}` : ""}${errs ? "&only_errors=true" : ""}${probs ? "&problems=true" : ""}`).then(setRows);
@@ -30,13 +32,22 @@ export default function Logs() {
   }, [gid, errs, probs]);
   const epName = (id: number) => eps.find((e) => e.id === id)?.name || "—";
   const gwName = (id: number) => gws.find((g) => g.id === id)?.name || id;
+  const tabs = (
+    <div className="mb-4 flex gap-1">{([["requests", "Requests"], ["audit", "Audit log"]] as const).map(([k, l]) => (
+      <button key={k} onClick={() => setTab(k)} className={`btn ${tab === k ? "primary" : ""}`}>{l}</button>))}</div>
+  );
+  const exportQs = `${gid ? `&gateway_id=${gid}` : ""}${errs ? "&only_errors=true" : ""}`;
+  if (tab === "audit") return <div className="fadein"><PageHeader title="Audit log" sub="Changes made through the admin interface." />{tabs}<AuditLog /></div>;
   return (
     <div className="fadein">
       <PageHeader title="Request Log" sub="Most recent routed requests (auto-refreshing)."
         actions={<>
+          <a className="btn" href={`/api/logs/export?format=csv${exportQs}`} download title="Download all matching requests (not only the 200 shown)">Export CSV</a>
+          <a className="btn" href={`/api/logs/export?format=jsonl${exportQs}`} download>JSONL</a>
           <select className="input !w-auto" value={gid} onChange={(e) => setGid(e.target.value)}><option value="">All gateways</option>{gws.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}</select>
           <label className="btn cursor-pointer"><input type="checkbox" checked={errs} onChange={(e) => setErrs(e.target.checked)} /> Errors only</label>
           <label className="btn cursor-pointer" title="Responses that were cut off, ran out of tokens while thinking, or ended without an answer"><input type="checkbox" checked={probs} onChange={(e) => setProbs(e.target.checked)} /> Incomplete only</label></>} />
+      {tabs}
       <div className="card overflow-x-auto p-2 scroll-thin">
         <table className="w-full text-sm">
           <thead><tr className="text-left text-xs uppercase tracking-wider text-[#6b7196]">
