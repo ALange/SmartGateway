@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { CheckCircle2, Database, FlaskConical, ImagePlus, Loader2, Send, Square, Trash2, XCircle } from "lucide-react";
 import { Link } from "react-router-dom";
-import { adminGwUrl, api } from "../api";
+import { adminGwUrl, api, unifiedUrl } from "../api";
 import { chatCompletion } from "../lib/chatStream";
 import { CapChip, ms, PageHeader } from "../components/ui";
 import FlowGraph from "../components/FlowGraph";
@@ -28,12 +28,31 @@ export default function Playground() {
   const [ctesting, setCtesting] = useState(false);
   const bottom = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { api("/api/gateways").then((g) => { setGws(g); if (g[0]) { setGid(g[0].id); setModel(g[0].models[0]?.public_name || ""); } }); }, []);
+  const [token, setToken] = useState("");
+  useEffect(() => {
+    Promise.all([api("/api/gateways"), api("/api/unified").catch(() => null), api("/api/gateways?all=true").catch(() => [])]).then(([g, uni, all]) => {
+      let list = g;
+      if (uni?.enabled) {
+        // flow-graph shape of the unified endpoint: the models of the exposed gateways plus the hidden internal one, tagged with their gateway
+        const exposed: any[] = (uni.gateways || []).filter((r: any) => r.exposed);
+        const picked = all.filter((x: any) => x.slug === "__unified__" ? (uni.models || []).length > 0 : exposed.some((r) => r.id === x.id));
+        const flow = {
+          id: "unified", slug: "unified", name: "Unified endpoint", strategy: "least_busy", gwIds: picked.map((x: any) => x.id),
+          models: picked.flatMap((x: any) => x.models.map((m: any) => ({ ...m, gw_id: x.id, label: x.slug === "__unified__" ? m.public_name : picked.length > 1 ? `${x.name}: ${m.public_name}` : m.public_name, strategy: m.strategy || x.strategy }))),
+        };
+        list = [...g, { id: -1, unified: true, flow, name: "Unified endpoint", models: (uni.model_names || []).map((n: string) => ({ id: n, public_name: n, capabilities: [], members: [] })) }];
+      }
+      setGws(list);
+      if (list[0]) { setGid(list[0].id); setModel(list[0].models[0]?.public_name || ""); }
+    });
+  }, []);
   useEffect(() => { bottom.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs]);
   const gw = gws.find((g) => g.id === gid);
   const loadCache = () => api("/api/cache/stats").then(setCstats).catch(() => {});
   useEffect(() => { loadCache(); const t = setInterval(loadCache, 4000); return () => clearInterval(t); }, []);
-  const cacheHeaders = (): Record<string, string> => (cacheMode === "force" ? { "X-SG-Cache": "1" } : cacheMode === "bypass" ? { "X-SG-Cache": "0" } : {});
+  const baseUrl = () => (gw?.unified ? unifiedUrl() : adminGwUrl(gw.slug));
+  const authHeaders = (): Record<string, string> => (gw?.unified && token ? { Authorization: `Bearer ${token}` } : {});
+  const cacheHeaders = (): Record<string, string> => ({ ...authHeaders(), ...(cacheMode === "force" ? { "X-SG-Cache": "1" } : cacheMode === "bypass" ? { "X-SG-Cache": "0" } : {}) });
   const gm = gw?.models.find((m: any) => m.public_name === model);
   const caps: string[] = gm?.capabilities || [];
 
@@ -52,7 +71,7 @@ export default function Playground() {
     const patch = (p: Partial<Msg>) => setMsgs((ms_) => ms_.map((m, i) => (i === ms_.length - 1 ? { ...m, ...p } : m)));
     const t0 = performance.now();
     const { error } = await chatCompletion(
-      { url: `${adminGwUrl(gw.slug)}/chat/completions`, signal: ac.signal, headers: cacheHeaders(), body: { model, messages: apiMsgs, temperature: temp, max_tokens: maxTok, stream } },
+      { url: `${baseUrl()}/chat/completions`, signal: ac.signal, headers: cacheHeaders(), body: { model, messages: apiMsgs, temperature: temp, max_tokens: maxTok, stream } },
       (meta) => patch({ meta: { ...meta } }),
       (u) => patch({ text: u.text ?? "", reasoning: u.reasoning }),
     );
@@ -75,7 +94,7 @@ export default function Playground() {
       const t0 = performance.now();
       let meta: any = {}, text = "", ttft: number | undefined;
       const { error } = await chatCompletion(
-        { url: `${adminGwUrl(gw.slug)}/chat/completions`, headers: cacheHeaders(), body: { model, messages: msgs, temperature: useTemp, max_tokens: Math.min(maxTok, 128), stream: asStream } },
+        { url: `${baseUrl()}/chat/completions`, headers: cacheHeaders(), body: { model, messages: msgs, temperature: useTemp, max_tokens: Math.min(maxTok, 128), stream: asStream } },
         (m) => (meta = m), (u) => { text = u.text || ""; ttft = u.ttft; },
       );
       rows.push({ mode: asStream ? "stream" : "json", cache: meta.cache as string | undefined, replay: meta.replay, ms: performance.now() - t0, ttft: asStream ? ttft : undefined, upstream: meta.upstream, endpoint: meta.endpoint, text, error });
@@ -119,6 +138,7 @@ export default function Playground() {
         <div className="card card-pad space-y-4 self-start">
           <div><label className="lbl">Gateway</label>
             <select className="input" value={gid ?? ""} onChange={(e) => { const g = gws.find((x) => x.id === +e.target.value); setGid(g.id); setModel(g.models[0]?.public_name || ""); }}>{gws.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}</select></div>
+          {gw?.unified && <div><label className="lbl">Unified API key (only if one is configured)</label><input className="input mono" value={token} onChange={(e) => setToken(e.target.value)} placeholder="sk-..." /></div>}
           <div><label className="lbl">Model</label>
             <select className="input mono" value={model} onChange={(e) => setModel(e.target.value)}>{gw?.models.map((m: any) => <option key={m.id}>{m.public_name}</option>)}</select>
             <div className="mt-2 flex flex-wrap gap-1">{caps.map((c) => <CapChip key={c} cap={c} />)}</div></div>
@@ -132,7 +152,7 @@ export default function Playground() {
           <div className="border-t border-white/[0.08] pt-4">
             <div className="mb-2 flex items-center justify-between"><span className="flex items-center gap-2 text-sm font-semibold"><Database size={14} /> Response cache</span>
               {cstats && <span className="chip" style={{ color: cstats.backend === "redis" ? (cstats.state === "error" ? "#d9776f" : "#5fb585") : "#8a92a6", background: "#ffffff0d" }}>{cstats.backend === "redis" ? (cstats.state === "error" ? "Redis down → memory" : "Redis") : "in-memory"}</span>}</div>
-            {gm ? (
+            {gm && !gw?.unified ? (
               <div className="space-y-1.5 text-xs text-[#8a92a6]">
                 <div>This model: {gm.cache_enabled ? <span className="text-[#7fd1a3]">caching on</span> : <span>caching off</span>}{gm.cache_enabled && <> · TTL {gm.cache_ttl ? `${gm.cache_ttl}s` : `${cstats?.default_ttl ?? 600}s (default)`} · {gm.cache_any_temperature ? "any temperature" : "temperature 0 only"} · {gm.cache_streaming ? `streams cached (${gm.cache_replay_speed || "instant"} replay)` : "streams not cached"}</>}</div>
                 {!gm.cache_enabled && <Link to={`/gateways/${gw.id}/edit`} className="text-[#7d9be0] hover:underline">Enable in gateway settings →</Link>}
@@ -149,7 +169,7 @@ export default function Playground() {
         </div>
 
         <div className="min-w-0 space-y-5">
-          {gw && gw.models.length > 0 && <FlowGraph key={gw.id} gw={gw} />}
+          {gw && (gw.unified ? gw.flow.models.length > 0 && <FlowGraph key="unified" gw={gw.flow} /> : gw.models.length > 0 && <FlowGraph key={gw.id} gw={gw} />)}
           {ctest && (() => { const v = verdict(ctest); return (
             <div className="card card-pad">
               <div className="mb-3 flex items-center justify-between"><h3 className="flex items-center gap-2 text-sm font-semibold"><FlaskConical size={14} /> Cache test</h3><button className="text-xs text-[#8a92a6] hover:text-white" onClick={() => setCtest(null)}>dismiss</button></div>
