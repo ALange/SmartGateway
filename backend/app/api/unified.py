@@ -8,7 +8,7 @@ from sqlmodel import select
 from .. import settings_store as st
 from .. import unified
 from ..db import session
-from ..models import Gateway, GatewayModel
+from ..models import Endpoint, Gateway, GatewayModel, Model
 
 router = APIRouter(prefix="/api")
 
@@ -22,25 +22,45 @@ class KeyIn(BaseModel):
     name: str
 
 
+class ModelSel(BaseModel):
+    model_id: int
+    name: Optional[str] = None   # public name on the unified endpoint (None = the upstream model id)
+
+
 class UnifiedIn(BaseModel):
     enabled: Optional[bool] = None
     gateways: Optional[list[Selection]] = None
+    models: Optional[list[ModelSel]] = None
 
 
 def _load():
     with session() as s:
-        gws = s.exec(select(Gateway).order_by(Gateway.id)).all()
+        gws = [g for g in s.exec(select(Gateway).order_by(Gateway.id)).all() if g.slug != unified.INTERNAL_SLUG]
         models: dict[int, list[str]] = {}
         for gm in s.exec(select(GatewayModel).order_by(GatewayModel.id)).all():
             models.setdefault(gm.gateway_id, []).append(gm.public_name)
     return gws, models
 
 
+def _direct_models(cfg: dict, aliases: list[dict]) -> list[dict]:
+    """The upstream models exposed directly, with what the UI needs to show them."""
+    names = {a["model"]: a["alias"] for a in aliases if a.get("direct")}
+    out = []
+    with session() as s:
+        eps = {e.id: e.name for e in s.exec(select(Endpoint)).all()}
+        for e in cfg["unified_models"]:
+            m = s.get(Model, e["model_id"])
+            if m:
+                out.append({"model_id": m.id, "name": e["name"], "alias": names.get(e["name"]), "upstream_id": m.upstream_id, "endpoint": eps.get(m.endpoint_id, "?"),
+                            "capabilities": m.capabilities or [], "enabled": bool(m.enabled)})
+    return out
+
+
 def view() -> dict:
     cfg = st.get_all()
     picked = {g["gateway_id"]: g.get("model") for g in cfg["unified_gateways"]}
     gws, models = _load()
-    aliases = unified.build_aliases(cfg["unified_gateways"], {g.id: g for g in gws}, models)
+    aliases = unified.exposed(cfg)
     names: dict[int, list[str]] = {}
     for a in aliases:
         names.setdefault(a["gateway"].id, []).append(a["alias"])
@@ -54,6 +74,7 @@ def view() -> dict:
             "names": names.get(g.id, []),  # model names clients can use for this gateway
         } for g in gws],
         "model_names": [a["alias"] for a in aliases],
+        "models": _direct_models(cfg, aliases),
         "keys": [{"id": k["id"], "name": k["name"], "prefix": k["prefix"], "created_at": k["created_at"]} for k in cfg["unified_keys"]],
     }
 
@@ -73,7 +94,7 @@ def put_unified(body: UnifiedIn):
         by_id = {g.id: g for g in gws}
         seen, cfg = set(), []
         for sel in body.gateways:
-            if sel.id not in by_id:
+            if sel.id not in by_id:   # (the hidden internal gateway is not in by_id either)
                 raise HTTPException(400, f"Gateway {sel.id} does not exist")
             if sel.id in seen:
                 raise HTTPException(400, f"Gateway '{by_id[sel.id].name}' is selected twice")
@@ -82,6 +103,22 @@ def put_unified(body: UnifiedIn):
             seen.add(sel.id)
             cfg.append({"gateway_id": sel.id, "model": sel.model or None})
         vals["unified_gateways"] = cfg
+    if body.models is not None:
+        entries, names = [], set()
+        with session() as s:
+            for sel in body.models:
+                m = s.get(Model, sel.model_id)
+                if not m:
+                    raise HTTPException(400, f"Model {sel.model_id} does not exist")
+                name = (sel.name or m.upstream_id).strip()
+                if not name or len(name) > 120:
+                    raise HTTPException(400, "A model name must be 1-120 characters")
+                if name.lower() in names:
+                    raise HTTPException(400, f"The name '{name}' is used twice")
+                names.add(name.lower())
+                entries.append({"model_id": m.id, "name": name})
+        unified.sync_models(entries)
+        vals["unified_models"] = entries
     if vals:
         st.update(vals)
     return view()

@@ -1,9 +1,10 @@
 import { NavLink, Route, Routes } from "react-router-dom";
 import { useEffect, useState } from "react";
 import Logo from "./components/Logo";
-import { Activity, LayoutGrid, LogOut, MessageSquare, Network, Plug, Minimize2, ScrollText, Settings as SettingsIcon } from "lucide-react";
+import { Activity, LayoutGrid, LogOut, MessageSquare, Network, Plug, Minimize2, ListFilter, ScrollText, Settings as SettingsIcon } from "lucide-react";
 import Settings from "./pages/Settings";
 import Compression from "./pages/Compression";
+import Filters from "./pages/Filters";
 import { api } from "./api";
 import Login from "./pages/Login";
 import Playground from "./pages/Playground";
@@ -13,14 +14,18 @@ import Endpoints from "./pages/Endpoints";
 import Gateways from "./pages/Gateways";
 import GatewayEditor from "./pages/GatewayEditor";
 import GatewayLive from "./pages/GatewayLive";
+import UnifiedLive from "./pages/UnifiedLive";
+import LiveAll from "./pages/LiveAll";
 import Logs from "./pages/Logs";
 
 const nav = [
   { to: "/", label: "Dashboard", icon: LayoutGrid, end: true },
   { to: "/endpoints", label: "Endpoints", icon: Plug },
   { to: "/gateways", label: "Smart Gateways", icon: Network },
+  { to: "/live", label: "Live", icon: Activity },
   { to: "/playground", label: "Playground", icon: MessageSquare },
   { to: "/compression", label: "Compression", icon: Minimize2 },
+  { to: "/filters", label: "Content Filters", icon: ListFilter },
   { to: "/logs", label: "Request Log", icon: ScrollText },
   { to: "/settings", label: "Settings", icon: SettingsIcon },
 ];
@@ -38,7 +43,7 @@ function Shell({ auth, onLogout }: { auth: { auth_required: boolean }; onLogout:
   const { connected, snapshot } = useLive();
   const inflight = snapshot ? Object.values<any>(snapshot.models).reduce((a, m) => a + m.in_flight, 0) : 0;
   return (
-    <div className="mx-auto flex min-h-full max-w-[1500px] gap-5 p-5">
+    <div className="mx-auto flex min-h-full max-w-[1800px] gap-5 p-5">
       <aside className="sticky top-5 hidden h-[calc(100vh-40px)] w-[260px] shrink-0 flex-col gap-4 lg:flex">
         <div className="flex items-center gap-3 px-2 py-1">
           <Logo size={32} />
@@ -76,10 +81,13 @@ function Shell({ auth, onLogout }: { auth: { auth_required: boolean }; onLogout:
           <Route path="/gateways" element={<Gateways />} />
           <Route path="/gateways/new" element={<GatewayEditor />} />
           <Route path="/gateways/:id/edit" element={<GatewayEditor />} />
+          <Route path="/gateways/unified" element={<UnifiedLive />} />
           <Route path="/gateways/:id" element={<GatewayLive />} />
+          <Route path="/live" element={<LiveAll />} />
           <Route path="/playground" element={<Playground />} />
           <Route path="/logs" element={<Logs />} />
           <Route path="/compression" element={<Compression />} />
+          <Route path="/filters" element={<Filters />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
       </main>

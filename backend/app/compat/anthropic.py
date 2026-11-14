@@ -88,7 +88,8 @@ def from_chat(resp: dict, public_model: str) -> dict:
 
 def error_body(message: str, typ: str = "api_error") -> dict:
     t = {"invalid_request_error": "invalid_request_error", "invalid_api_key": "authentication_error",
-         "rate_limit_exceeded": "rate_limit_error", "not_found": "not_found_error", "model_not_found": "not_found_error"}.get(typ, "api_error")
+         "rate_limit_exceeded": "rate_limit_error", "not_found": "not_found_error", "model_not_found": "not_found_error",
+         "guardrail_blocked": "invalid_request_error", "output_validation_failed": "api_error"}.get(typ, "api_error")
     return {"type": "error", "error": {"type": t, "message": message}}
 
 

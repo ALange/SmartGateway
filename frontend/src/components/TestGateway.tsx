@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Loader2, Play } from "lucide-react";
-import { adminGwUrl, gwUrl } from "../api";
+import { adminGwUrl, gwUrl, unifiedUrl } from "../api";
 import { chatCompletion } from "../lib/chatStream";
 import FlowGraph from "./FlowGraph";
 import { CapChip, Modal, ms } from "./ui";
@@ -9,6 +9,9 @@ const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJA
 type Row = { n: number; status?: number; total?: number; ttft?: number; upstream?: string; endpoint?: string; queue?: number; attempts?: string; cache?: string; text?: string; reasoning?: string; finish?: string; tokens?: string; error?: string; done: boolean };
 
 export default function TestGateway({ gw, onClose }: { gw: any; onClose: () => void }) {
+  const base = gw.unified ? unifiedUrl() : adminGwUrl(gw.slug);
+  const [token, setToken] = useState("");
+  const auth: Record<string, string> = gw.unified && token ? { Authorization: `Bearer ${token}` } : {};
   const [model, setModel] = useState(gw.models[0]?.public_name || "");
   const caps: string[] = gw.models.find((m: any) => m.public_name === model)?.capabilities || [];
   const modes = [
@@ -35,14 +38,14 @@ export default function TestGateway({ gw, onClose }: { gw: any; onClose: () => v
     const content: any = mode === "vision" ? [{ type: "text", text: prompt }, { type: "image_url", image_url: { url: PNG } }] : prompt;
     if (embed) {
       try {
-        const r = await fetch(`${adminGwUrl(gw.slug)}/embeddings`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model, input: prompt }) });
+        const r = await fetch(`${base}/embeddings`, { method: "POST", headers: { "Content-Type": "application/json", ...auth }, body: JSON.stringify({ model, input: prompt }) });
         update({ status: r.status, upstream: r.headers.get("X-SG-Upstream") || undefined, endpoint: r.headers.get("X-SG-Endpoint") || undefined, queue: +(r.headers.get("X-SG-Queue-Ms") || 0), attempts: r.headers.get("X-SG-Attempts") || undefined });
         const j = await r.json();
         update(r.ok ? { text: `vector of ${j.data?.[0]?.embedding?.length} dimensions` } : { error: j.error?.message || JSON.stringify(j) });
       } catch (e: any) { update({ error: e.message }); }
     } else {
       const { error } = await chatCompletion(
-        { url: `${adminGwUrl(gw.slug)}/chat/completions`, body: { model, messages: [{ role: "user", content }], max_tokens: maxTokens, stream: mode === "stream" } },
+        { url: `${base}/chat/completions`, headers: auth, body: { model, messages: [{ role: "user", content }], max_tokens: maxTokens, stream: mode === "stream" } },
         (m) => update({ status: m.status, upstream: m.upstream, endpoint: m.endpoint, queue: m.queue, attempts: m.attempts, cache: m.cache }),
         (u) => update({ ...u }),
       );
@@ -74,10 +77,12 @@ export default function TestGateway({ gw, onClose }: { gw: any; onClose: () => v
           <div className="flex flex-wrap gap-1 text-xs text-[#8a92a6]">Capabilities: {caps.map((c) => <CapChip key={c} cap={c} />)}</div>
           <div><label className="lbl">{mode === "embed" ? "Input text" : "Prompt"}</label><textarea className="input" rows={2} value={prompt} onChange={(e) => setPrompt(e.target.value)} /></div>
           <div className="flex items-center justify-between">
-            <span className="mono text-xs text-[#8a92a6]">POST {gwUrl(gw.slug)}/{mode === "embed" ? "embeddings" : "chat/completions"}</span>
+            <span className="mono text-xs text-[#8a92a6]">POST {gw.unified ? unifiedUrl() : gwUrl(gw.slug)}/{mode === "embed" ? "embeddings" : "chat/completions"}</span>
             <button className="btn primary" disabled={running || !prompt} onClick={run}>{running ? <Loader2 size={15} className="animate-spin" /> : <Play size={15} />} Run test</button>
           </div>
-          <FlowGraph gw={gw} />
+          {gw.unified
+            ? <div><label className="lbl">Unified API key (only if one is configured)</label><input className="input mono" value={token} onChange={(e) => setToken(e.target.value)} placeholder="sk-..." /></div>
+            : <FlowGraph gw={gw} />}
           {rows.length > 0 && (
             <div className="space-y-2">
               {count > 1 && Object.keys(dist).length > 0 && (

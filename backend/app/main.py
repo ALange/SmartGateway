@@ -16,7 +16,7 @@ from sqlmodel import select
 from pydantic import BaseModel
 
 from . import config, crypto, proxy
-from .api import compression as compression_api, endpoints, gateways, insights as insights_api, settings as settings_api, stats, stress as stress_api, unified as unified_api
+from .api import compression as compression_api, content_filters as content_filters_api, endpoints, gateways, insights as insights_api, settings as settings_api, stats, stress as stress_api, unified as unified_api
 from .db import engine, init_db, session
 from .models import Endpoint
 from .router import health
@@ -157,6 +157,7 @@ app.include_router(gateways.router)
 app.include_router(stats.router)
 app.include_router(settings_api.router)
 app.include_router(compression_api.router)
+app.include_router(content_filters_api.router)
 app.include_router(insights_api.router)
 app.include_router(stress_api.router)
 app.include_router(unified_api.router)

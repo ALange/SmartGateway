@@ -69,6 +69,18 @@ class Scheduler:
         self.breaker = Breaker()
         self.waiters: list[Waiter] = []
 
+    def forget_model(self, model_id: int, member_ids: list[int]) -> None:
+        """Drop runtime state for a model (and its members) that no longer exists."""
+        st = self.stats
+        for d in (st.model_inflight, st.external_busy, st.ewma_latency):
+            d.pop(model_id, None)
+        for mid in member_ids:
+            st.member_inflight.pop(mid, None)
+            st.rr_credit.pop(mid, None)
+        self.breaker.failures.pop(model_id, None)
+        self.breaker.opened_at.pop(model_id, None)
+        self.breaker.probing.discard(model_id)
+
     def queue_depth(self, gateway_id: Optional[int] = None) -> int:
         return sum(1 for w in self.waiters if gateway_id is None or w.gateway_id == gateway_id)
 

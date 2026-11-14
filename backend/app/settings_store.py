@@ -25,6 +25,7 @@ DEFAULTS: dict[str, Any] = {
     "context_insights_enabled": True,
     "unified_enabled": False,        # expose several gateways as one endpoint (/unified/v1), model name = gateway name
     "unified_keys": [],              # API keys of the unified endpoint: [{id, name, key_hash, prefix, created_at}] (hashed, plaintext shown once)
+    "unified_models": [],            # [{"model_id": int, "name": public name}]: upstream models exposed directly (backed by a hidden internal gateway)
     "unified_gateways": [],          # [{"gateway_id": int, "model": optional default public model}]
 }
 SECRETS = {"redis_password"}

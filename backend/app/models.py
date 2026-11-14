@@ -59,6 +59,7 @@ class GatewayModel(SQLModel, table=True):
     cache_streaming: bool = False  # also cache/replay stream: true requests
     cache_replay_speed: str = "instant"  # instant | realistic (replay at the originally measured speed)
     compress_mode: Optional[str] = None  # None = inherit global setting; off | shadow | on
+    guardrails: Optional[dict] = Field(default=None, sa_column=Column(JSON))  # None = all guardrails off (see guardrails/pipeline.py)
 
 
 class Member(SQLModel, table=True):
@@ -113,6 +114,8 @@ class RequestLog(SQLModel, table=True):
     completion_tokens: int = 0
     attempts: int = 1
     error: Optional[str] = None
+    finish_reason: Optional[str] = None   # what the model reported: stop | length | tool_calls | content_filter | None (no finish chunk)
+    outcome: Optional[str] = Field(default=None, index=True)  # complete | cut_by_limit | cut_in_reasoning | no_answer | truncated | client_aborted | stream_error | filtered | empty
     # context compression / cache alignment / composition (all nullable; no request content is stored)
     cache_state: Optional[str] = None  # hit | miss | skip | bypass (None = request was not eligible for caching)
     compress_mode: Optional[str] = None
@@ -126,6 +129,34 @@ class RequestLog(SQLModel, table=True):
     ctx_tools_chars: Optional[int] = None
     ctx_messages_chars: Optional[int] = None
     ctx_blocks: Optional[list] = Field(default=None, sa_column=Column(JSON))
+    # guardrails (counts and rule names only, never request content)
+    guardrail_action: Optional[str] = None  # pass | flagged | redacted | retried | failed | blocked
+    guardrail_findings: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    output_retries: Optional[int] = None
+
+
+class ContentFilter(SQLModel, table=True):
+    """A reusable regex content filter. Gateway models reference filters (directly or through groups) in their guardrails config."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(index=True)
+    description: str = ""
+    pattern: str
+    stage: str = "both"  # input | output | both
+    action: str = "block"  # block | redact
+    validator: Optional[str] = None  # name of a checksum validator (guardrails/checks.py); only valid numbers match
+    enabled: bool = True
+    created_at: float = Field(default_factory=time.time)
+
+
+class FilterGroup(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(index=True)
+    description: str = ""
+
+
+class FilterGroupMember(SQLModel, table=True):
+    group_id: int = Field(foreign_key="filtergroup.id", primary_key=True)
+    filter_id: int = Field(foreign_key="contentfilter.id", primary_key=True)
 
 
 class Setting(SQLModel, table=True):

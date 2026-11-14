@@ -4,8 +4,9 @@ import { Plus, Save, Trash2 } from "lucide-react";
 import { api, STRATEGIES } from "../api";
 import { CapChip, PageHeader } from "../components/ui";
 import KeysPanel from "../components/KeysPanel";
+import GuardrailsEditor from "../components/GuardrailsEditor";
 
-const blankModel = () => ({ public_name: "", strategy: "", sticky: false, system_prompt: "", max_tokens_cap: "", default_params: "", cache_enabled: false, cache_ttl: "", cache_any_temperature: false, cache_streaming: true, cache_replay_speed: "instant", compress_mode: "", members: [] as any[] });
+const blankModel = () => ({ public_name: "", strategy: "", sticky: false, system_prompt: "", max_tokens_cap: "", default_params: "", cache_enabled: false, cache_ttl: "", cache_any_temperature: false, cache_streaming: true, cache_replay_speed: "instant", compress_mode: "", guardrails: null as any, members: [] as any[] });
 
 export default function GatewayEditor() {
   const { id } = useParams();
@@ -19,7 +20,7 @@ export default function GatewayEditor() {
     api("/api/endpoints").then(setEps);
     api("/api/cache/stats").then((c) => setCacheBackend(c.backend === "redis" ? (c.state === "error" ? "redis (down → memory)" : "redis") : "in-memory")).catch(() => {});
     if (id) api(`/api/gateways/${id}`).then((g) => setF({
-      ...g, models: g.models.map((m: any) => ({ ...m, strategy: m.strategy || "", system_prompt: m.system_prompt || "", max_tokens_cap: m.max_tokens_cap ?? "", cache_ttl: m.cache_ttl ?? "", compress_mode: m.compress_mode || "",
+      ...g, models: g.models.map((m: any) => ({ ...m, strategy: m.strategy || "", system_prompt: m.system_prompt || "", max_tokens_cap: m.max_tokens_cap ?? "", cache_ttl: m.cache_ttl ?? "", compress_mode: m.compress_mode || "", guardrails: m.guardrails || null,
         default_params: m.default_params && Object.keys(m.default_params).length ? JSON.stringify(m.default_params, null, 2) : "" })) }));
   }, [id]);
 
@@ -35,7 +36,7 @@ export default function GatewayEditor() {
       models = f.models.map((m: any) => ({
         public_name: m.public_name, strategy: m.strategy || null, sticky: !!m.sticky, system_prompt: m.system_prompt || null,
         max_tokens_cap: m.max_tokens_cap ? +m.max_tokens_cap : null,
-        cache_enabled: !!m.cache_enabled, cache_streaming: !!m.cache_streaming, cache_replay_speed: m.cache_replay_speed || "instant", compress_mode: m.compress_mode || null, cache_ttl: m.cache_ttl ? +m.cache_ttl : null, cache_any_temperature: !!m.cache_any_temperature,
+        cache_enabled: !!m.cache_enabled, cache_streaming: !!m.cache_streaming, cache_replay_speed: m.cache_replay_speed || "instant", compress_mode: m.compress_mode || null, guardrails: m.guardrails || null, cache_ttl: m.cache_ttl ? +m.cache_ttl : null, cache_any_temperature: !!m.cache_any_temperature,
         default_params: m.default_params?.trim() ? JSON.parse(m.default_params) : {},
         members: m.members.map((x: any) => ({ model_id: x.model_id, weight: +x.weight || 1, priority: +x.priority || 0, slots_override: x.slots_override ? +x.slots_override : null,
           enabled: x.enabled ?? true, is_fallback: !!x.is_fallback, tier: +x.tier || 2 })),
@@ -131,6 +132,8 @@ export default function GatewayEditor() {
                   <option value="">Use global setting</option><option value="off">Off</option><option value="shadow">Shadow (measure only)</option><option value="on">On</option></select>
                 <span className="text-xs text-[#6b7196]">Shrinks older tool results before they are sent upstream. Global default is set in Settings.</span>
               </div>
+
+              <GuardrailsEditor value={m.guardrails} onChange={(v) => setModel(i, { guardrails: v })} />
 
               <details className="mt-4 rounded-md border border-white/[0.08] p-3">
                 <summary className="cursor-pointer text-sm text-[#8a92a6]">Request overrides (optional) — pass-through unless set</summary>

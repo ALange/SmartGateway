@@ -127,6 +127,21 @@ def test_provider_detected_from_a_typed_url_and_rescan_keeps_it(client, monkeypa
     client.delete(f"/api/endpoints/{ep['id']}")
 
 
+def test_rescan_prunes_models_removed_upstream(client, monkeypatch):
+    full = fixture("go")
+    patch_network(monkeypatch, full, (True, ""))
+    ep = client.post("/api/endpoints", json={"name": "go", "base_url": "https://opencode.ai/inference/go/v1/", "api_key": "k"}).json()
+    assert len(ep["models"]) == len(full) and len(full) >= 2
+    assert not any(m["enabled"] for m in ep["models"])                # new models stay off until enabled by hand
+    patch_network(monkeypatch, full[:1], (True, ""))
+    again = client.post(f"/api/endpoints/{ep['id']}/rescan?probe=true").json()
+    assert [m["upstream_id"] for m in again["models"]] == [full[0]["id"]]
+    patch_network(monkeypatch, [], (True, ""))                       # empty answer must not wipe the endpoint
+    kept = client.post(f"/api/endpoints/{ep['id']}/rescan?probe=true").json()
+    assert len(kept["models"]) == 1
+    client.delete(f"/api/endpoints/{ep['id']}")
+
+
 def test_rejected_key_leaves_nothing_behind(client, monkeypatch):
     patch_network(monkeypatch, fixture("zen"), (False, "HTTP 401"))
     before = len(client.get("/api/endpoints").json())

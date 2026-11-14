@@ -40,11 +40,13 @@ def _pct(vals: list, p: float):
 
 
 @router.get("/stats")
-def stats(minutes: int = 60, gateway_id: int | None = None, s: Session = Depends(get_session)):
+def stats(minutes: int = 60, gateway_id: int | None = None, gateway_ids: str | None = None, s: Session = Depends(get_session)):
     since = time.time() - minutes * 60
     q = select(RequestLog).where(RequestLog.ts >= since)
     if gateway_id:
         q = q.where(RequestLog.gateway_id == gateway_id)
+    if gateway_ids is not None:   # comma-separated list, e.g. the gateways behind the unified endpoint
+        q = q.where(RequestLog.gateway_id.in_([int(x) for x in gateway_ids.split(",") if x.strip().isdigit()]))
     rows = s.exec(q).all()
     total = len(rows)
     ok = sum(1 for r in rows if r.ok)
@@ -86,13 +88,15 @@ def stats(minutes: int = 60, gateway_id: int | None = None, s: Session = Depends
 
 
 @router.get("/logs")
-def logs(limit: int = Query(100, le=1000), gateway_id: int | None = None, only_errors: bool = False,
+def logs(limit: int = Query(100, le=1000), gateway_id: int | None = None, only_errors: bool = False, problems: bool = False,
          s: Session = Depends(get_session)):
     q = select(RequestLog).order_by(RequestLog.id.desc()).limit(limit)
     if gateway_id:
         q = q.where(RequestLog.gateway_id == gateway_id)
     if only_errors:
         q = q.where(RequestLog.ok == False)  # noqa: E712
+    if problems:   # responses that did not end cleanly
+        q = q.where(RequestLog.outcome.in_(["cut_by_limit", "cut_in_reasoning", "no_answer", "truncated", "stream_error", "filtered", "empty", "blocked", "invalid_output"]))
     return [r.model_dump() for r in s.exec(q).all()]
 
 
@@ -126,3 +130,29 @@ async def ws(sock: WebSocket):
         pass
     finally:
         events.unsubscribe(q)
+
+
+@router.get("/stats/by-gateway")
+def stats_by_gateway(minutes: int = 15, buckets: int = 20, s: Session = Depends(get_session)):
+    """Per gateway: request counts, latency and a small request timeline (for the all-gateways live overview)."""
+    minutes = max(1, min(minutes, 1440))
+    buckets = max(5, min(buckets, 60))
+    since = time.time() - minutes * 60
+    span = minutes * 60 / buckets
+    rows = s.exec(select(RequestLog).where(RequestLog.ts >= since)).all()
+    out: dict[int, dict] = {}
+    for r in rows:
+        d = out.setdefault(r.gateway_id, {"requests": 0, "errors": 0, "completion_tokens": 0, "prompt_tokens": 0, "lat": [], "ttft": [], "timeline": [0] * buckets})
+        d["requests"] += 1
+        d["errors"] += 0 if r.ok else 1
+        d["completion_tokens"] += r.completion_tokens or 0
+        d["prompt_tokens"] += r.prompt_tokens or 0
+        if r.ok:
+            d["lat"].append(r.total_ms)
+            if r.ttft_ms is not None:
+                d["ttft"].append(r.ttft_ms)
+        d["timeline"][min(buckets - 1, int((r.ts - since) / span))] += 1
+    for d in out.values():
+        d["p50_ms"], d["ttft_p50_ms"] = _pct(d.pop("lat"), 0.5), _pct(d.pop("ttft"), 0.5)
+        d["tokens_per_s"] = round(d["completion_tokens"] / (minutes * 60), 2)
+    return {"minutes": minutes, "gateways": out}

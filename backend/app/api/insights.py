@@ -1,3 +1,4 @@
+import statistics
 import time
 from typing import Optional
 
@@ -105,3 +106,57 @@ async def performance(minutes: int = 60, s: Session = Depends(get_session)):
     out = build_performance(data, gateways, models, since=since, until=until, truncated=truncated)
     out["cache_live"] = await cache_facade.stats()
     return out
+
+
+@router.get("/live-series")
+def live_series(minutes: int = 30, buckets: int = 30, gateway_id: Optional[int] = None, gateway_ids: Optional[str] = None,
+                s: Session = Depends(get_session)):
+    """Time series for a gateway's live view: usage per bucket, and generation / prompt-processing speed per upstream model."""
+    from ..models import Endpoint, Model
+    from ..perf_insights import gen_speed, prompt_speed, summarize
+
+    minutes = max(1, min(minutes, 1440))
+    buckets = max(5, min(buckets, 120))
+    until = time.time()
+    since = until - minutes * 60
+    step = (until - since) / buckets
+    q = select(RequestLog).where(RequestLog.ts >= since)
+    if gateway_id:
+        q = q.where(RequestLog.gateway_id == gateway_id)
+    if gateway_ids is not None:   # comma-separated, e.g. the gateways behind the unified endpoint
+        q = q.where(RequestLog.gateway_id.in_([int(x) for x in gateway_ids.split(",") if x.strip().isdigit()]))
+    cols = {"ts", "model_id", "ok", "stream", "cached", "attempts", "prompt_tokens", "completion_tokens", "ttft_ms", "total_ms", "queue_ms"}
+    rows = [r.model_dump(include=cols) for r in s.exec(q.order_by(RequestLog.id.desc()).limit(20000)).all()]
+
+    usage = {k: [0] * buckets for k in ("requests", "errors", "cached", "prompt_tokens", "completion_tokens")}
+    per: dict[int, dict] = {}
+    for r in rows:
+        b = min(buckets - 1, int((r["ts"] - since) / step))
+        usage["requests"][b] += 1
+        usage["errors"][b] += 0 if r["ok"] else 1
+        usage["cached"][b] += 1 if r["cached"] else 0
+        usage["prompt_tokens"][b] += r["prompt_tokens"] or 0
+        usage["completion_tokens"][b] += r["completion_tokens"] or 0
+        if r["model_id"] and not r["cached"]:
+            d = per.setdefault(r["model_id"], {"requests": 0, "gen": [[] for _ in range(buckets)], "prompt": [[] for _ in range(buckets)]})
+            d["requests"] += 1
+            g, p = gen_speed(r), prompt_speed(r)
+            if g is not None:
+                d["gen"][b].append(g)
+            if p is not None:
+                d["prompt"][b].append(p)
+    eps = {e.id: e.name for e in s.exec(select(Endpoint)).all()}
+    info = {m.id: m for m in s.exec(select(Model).where(Model.id.in_(list(per) or [0]))).all()}
+
+    def med(v):
+        return round(statistics.median(v), 1) if v else None
+    models = []
+    for mid in sorted(per):
+        d, m = per[mid], info.get(mid)
+        gen_all = [x for b in d["gen"] for x in b]
+        pp_all = [x for b in d["prompt"] for x in b]
+        models.append({"model_id": mid, "upstream": m.upstream_id if m else f"#{mid}", "endpoint": eps.get(m.endpoint_id, "") if m else "",
+                       "requests": d["requests"], "gen": [med(b) for b in d["gen"]], "prompt": [med(b) for b in d["prompt"]],
+                       "gen_stats": summarize(gen_all), "prompt_stats": summarize(pp_all)})
+    return {"since": since, "until": until, "bucket_seconds": step,
+            "starts": [round(since + i * step, 1) for i in range(buckets)], "usage": usage, "models": models}

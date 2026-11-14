@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Check, Copy, KeyRound, Layers, Loader2, Lock, Plus, Save, Trash2 } from "lucide-react";
+import { Box, Check, Copy, KeyRound, Layers, Loader2, Lock, Plus, Save, Trash2, X } from "lucide-react";
 import { api } from "../api";
 
 type Row = { id: number; name: string; slug: string; models: string[]; has_keys: boolean; exposed: boolean; model: string | null; names: string[] };
@@ -14,22 +14,28 @@ export default function UnifiedEndpoint() {
   const [copied, setCopied] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
+  const [dModels, setDModels] = useState<{ model_id: number; name: string; upstream_id: string; endpoint: string }[]>([]);  // upstream models exposed directly
+  const [allModels, setAllModels] = useState<any[]>([]);   // every model of every endpoint, for the picker
+  const [pick, setPick] = useState("");
   const [keys, setKeys] = useState<any[]>([]);
   const [keyName, setKeyName] = useState("");
   const [fresh, setFresh] = useState<any>(null);  // a just-created key: its plaintext is shown once
   const [keyErr, setKeyErr] = useState("");
-  const apply = (v: any) => { setEnabled(v.enabled); setRows(v.gateways); setKeys(v.keys || []); setDirty(false); };
-  useEffect(() => { api("/api/unified").then(apply).catch(() => {}); }, []);
+  const apply = (v: any) => { setEnabled(v.enabled); setRows(v.gateways); setDModels(v.models || []); setKeys(v.keys || []); setDirty(false); };
+  useEffect(() => {
+    api("/api/unified").then(apply).catch(() => {});
+    api("/api/endpoints").then((eps: any[]) => setAllModels(eps.flatMap((e) => (e.models || []).filter((m: any) => m.enabled !== false).map((m: any) => ({ model_id: m.id, upstream_id: m.upstream_id, endpoint: e.name }))))).catch(() => {});
+  }, []);
   if (!rows) return null;
 
   const url = `${location.origin}/unified/v1`;
   const patch = (id: number, p: Partial<Row>) => { setRows(rows.map((r) => (r.id === id ? { ...r, ...p } : r))); setDirty(true); };
   const exposed = rows.filter((r) => r.exposed);
-  const firstName = exposed[0]?.name || "My Gateway";
+  const firstName = exposed[0]?.name || dModels[0]?.name || "My Gateway";
   const save = async () => {
     setBusy(true); setMsg(null);
     try {
-      const v = await api("/api/unified", { method: "PUT", json: { enabled, gateways: exposed.map((r) => ({ id: r.id, model: r.model })) } });
+      const v = await api("/api/unified", { method: "PUT", json: { enabled, gateways: exposed.map((r) => ({ id: r.id, model: r.model })), models: dModels.map((m) => ({ model_id: m.model_id, name: m.name })) } });
       apply(v); setMsg({ ok: true, text: "Saved. Changes apply within a few seconds." });
     } catch (e: any) { setMsg({ ok: false, text: e.message }); }
     setBusy(false);
@@ -45,6 +51,13 @@ export default function UnifiedEndpoint() {
     if (!confirm(`Delete the key "${k.name}"? Clients using it stop working immediately.${keys.length === 1 ? " This is the last key, so the endpoint will accept calls without a unified key again." : ""}`)) return;
     await api(`/api/unified/keys/${k.id}`, { method: "DELETE" });
     setKeys((x) => x.filter((y) => y.id !== k.id)); if (fresh?.id === k.id) setFresh(null);
+  };
+  const addModel = () => {
+    const m = allModels.find((x) => String(x.model_id) === pick);
+    if (!m) return;
+    let name = m.upstream_id, n = 2;
+    while (dModels.some((x) => x.name.toLowerCase() === name.toLowerCase())) name = `${m.upstream_id}-${n++}`;
+    setDModels([...dModels, { ...m, name }]); setPick(""); setDirty(true);
   };
   const copy = () => { navigator.clipboard?.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1500); };
 
@@ -106,6 +119,26 @@ export default function UnifiedEndpoint() {
       )}
       <p className="mt-2 text-xs text-[#6b7196]">A gateway with several public models is reachable as <span className="mono">name</span> (its default model) and as <span className="mono">name/model</span>. If two gateways share a name, the slug is appended to the second.</p>
 
+      <label className="lbl mt-6 flex items-center gap-1.5"><Box size={12} /> Models</label>
+      <p className="mb-3 max-w-3xl text-xs text-[#6b7196]">Expose a single model of one of your endpoints directly, without a gateway around it. Clients use the name you give it in the <span className="mono">model</span> field.</p>
+      {dModels.length > 0 && (
+        <div className="mb-3 divide-y divide-white/5 rounded-md border border-white/5">
+          {dModels.map((m) => (
+            <div key={m.model_id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3.5 py-2.5 text-sm">
+              <input className="input mono !w-auto min-w-[200px] flex-1 !py-1" value={m.name} maxLength={120} onChange={(e) => { setDModels(dModels.map((x) => (x.model_id === m.model_id ? { ...x, name: e.target.value } : x))); setDirty(true); }} />
+              <span className="text-xs text-[#6b7196]"><span className="mono">{m.upstream_id}</span> @ {m.endpoint}</span>
+              <button className="btn danger !px-2 !py-1" title="Remove" onClick={() => { setDModels(dModels.filter((x) => x.model_id !== m.model_id)); setDirty(true); }}><X size={14} /></button>
+            </div>))}
+        </div>
+      )}
+      <div className="flex gap-2">
+        <select className="input max-w-md" value={pick} onChange={(e) => setPick(e.target.value)}>
+          <option value="">Add a model…</option>
+          {allModels.filter((m) => !dModels.some((x) => x.model_id === m.model_id)).map((m) => <option key={m.model_id} value={m.model_id}>{m.upstream_id} @ {m.endpoint}</option>)}
+        </select>
+        <button className="btn whitespace-nowrap" onClick={addModel} disabled={!pick}><Plus size={15} /> Add</button>
+      </div>
+
       <label className="lbl mt-6 flex items-center gap-1.5"><KeyRound size={12} /> API keys</label>
       <p className="mb-3 max-w-3xl text-xs text-[#6b7196]">
         {keys.length === 0
@@ -137,7 +170,7 @@ export default function UnifiedEndpoint() {
       </div>
       {keyErr && <div className="mt-2 text-sm text-red-300">{keyErr}</div>}
 
-      {exposed.length > 0 && (
+      {(exposed.length > 0 || dModels.length > 0) && (
         <pre className="mono scroll-thin mt-5 overflow-x-auto rounded-md bg-black/40 p-3 text-[11px] leading-relaxed text-[#9fb0ff]">{`curl ${url}/chat/completions \\
   -H "Authorization: Bearer <${keys.length ? "unified API key" : "gateway API key, if the gateway has one"}>" \\
   -H "Content-Type: application/json" \\

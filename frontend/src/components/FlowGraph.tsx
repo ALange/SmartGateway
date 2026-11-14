@@ -17,6 +17,8 @@ export default function FlowGraph({ gw, onEvent }: { gw: any; onEvent?: (ev: any
   const { snapshot, subscribe } = useLive();
   const [, force] = useState(0);
 
+  // a unified graph holds the models of several gateways: tell same-named models apart by their gateway
+  const pmOf = (ev: any) => (m: any) => m.public_name === ev.public_model && (m.gw_id == null || String(m.gw_id) === String(ev.gateway_id));
   const layout = useMemo(() => {
     if (!gw) return null;
     const ups: any[] = []; const seen = new Set<number>();
@@ -32,12 +34,12 @@ export default function FlowGraph({ gw, onEvent }: { gw: any; onEvent?: (ev: any
   useEffect(() => {
     if (!layout) return;
     return subscribe((ev) => {
-      if (String(ev.gateway_id) !== String(gw.id)) return;
+      if (gw.gwIds ? !gw.gwIds.map(String).includes(String(ev.gateway_id)) : String(ev.gateway_id) !== String(gw.id)) return;
       onEventRef.current?.(ev);
       const now = Date.now();
       const bump = (k: string) => { (counts.current[k] ||= []).push(now); };
       if (ev.type === "start") {
-        const pm = layout.pms.find((m: any) => m.public_name === ev.public_model);
+        const pm = layout.pms.find(pmOf(ev));
         const up = layout.ups.find((u: any) => u.model_id === ev.model_id);
         if (!pm || !up) return;
         const pts: P[] = [{ x: COLX.client + NW, y: layout.client.y }, { x: COLX.gw, y: layout.gwY }, { x: COLX.gw + NW, y: layout.gwY }, { x: COLX.pm, y: pm.y }, { x: COLX.pm + NW, y: pm.y }, { x: COLX.up, y: up.y }];
@@ -48,12 +50,12 @@ export default function FlowGraph({ gw, onEvent }: { gw: any; onEvent?: (ev: any
         const up = layout.ups.find((u: any) => u.model_id === ev.model_id);
         if (up && !ev.ok) setParts((p) => [...p.slice(-60), { k: ev.id + "e", d: `M ${COLX.up} ${up.y} l -30 0`, color: "#d9776f", dur: 0.8, r: 7 }]);
         if (up && ev.ok) {
-          const d = `M ${COLX.up} ${up.y} ` + curve({ x: COLX.up, y: up.y }, { x: COLX.pm + NW, y: layout.pms.find((m: any) => m.public_name === ev.public_model)?.y ?? layout.gwY });
+          const d = `M ${COLX.up} ${up.y} ` + curve({ x: COLX.up, y: up.y }, { x: COLX.pm + NW, y: layout.pms.find(pmOf(ev))?.y ?? layout.gwY });
           if (now - lastSpawn.current >= 40) { lastSpawn.current = now; setParts((p) => [...p.slice(-60), { k: ev.id + "r", d, color: "#5fb585", dur: 0.9, r: 3.5 }]); }
         }
       }
     });
-  }, [layout, gw.id, subscribe]);
+  }, [layout, gw.id, gw.gwIds, subscribe]);
 
   useEffect(() => { const t = setInterval(() => force((x) => x + 1), 1000); return () => clearInterval(t); }, []);
   useEffect(() => { if (parts.length) { const t = setTimeout(() => setParts((p) => p.slice(1)), 1800); return () => clearTimeout(t); } }, [parts]);
@@ -62,7 +64,7 @@ export default function FlowGraph({ gw, onEvent }: { gw: any; onEvent?: (ev: any
   const now = Date.now();
   const rate = (k: string) => (counts.current[k] = (counts.current[k] || []).filter((t) => now - t < 20000)).length;
   const width = (k: string) => 1.5 + Math.min(7, rate(k) * 0.7);
-  const qd = snapshot?.queue?.[gw.id] || 0;
+  const qd = gw.gwIds ? gw.gwIds.reduce((a: number, i: number) => a + (snapshot?.queue?.[i] || 0), 0) : snapshot?.queue?.[gw.id] || 0;
   const totalIn = layout.ups.reduce((a: number, u: any) => a + (snapshot?.models?.[u.model_id]?.in_flight || 0), 0);
 
   const Node = ({ x, y, title, sub, accent, children }: any) => (
@@ -81,21 +83,21 @@ export default function FlowGraph({ gw, onEvent }: { gw: any; onEvent?: (ev: any
               <linearGradient id="edge" x1="0" x2="1"><stop offset="0%" stopColor="#5b7fc4" /><stop offset="100%" stopColor="#5b7fc4" /></linearGradient></defs>
             {[["Clients", COLX.client], ["Gateway", COLX.gw], ["Public models", COLX.pm], ["Upstream models", COLX.up]].map(([l, x]: any) => <text key={l} x={x} y={18} fill="#5b6086" fontSize={10} letterSpacing="2" style={{ textTransform: "uppercase" }}>{l}</text>)}
             {/* edges */}
-            <path d={`M ${COLX.client + NW} ${layout.client.y} ${curve({ x: COLX.client + NW, y: layout.client.y }, { x: COLX.gw, y: layout.gwY })}`} stroke="url(#edge)" strokeOpacity={0.35} strokeWidth={width("c-g")} fill="none" />
-            {layout.pms.map((pm: any) => <path key={pm.id} d={`M ${COLX.gw + NW} ${layout.gwY} ${curve({ x: COLX.gw + NW, y: layout.gwY }, { x: COLX.pm, y: pm.y })}`} stroke="url(#edge)" strokeOpacity={0.35} strokeWidth={width(`g-p-${pm.id}`)} fill="none" />)}
+            <path d={`M ${COLX.client + NW} ${layout.client.y} ${curve({ x: COLX.client + NW, y: layout.client.y }, { x: COLX.gw, y: layout.gwY })}`} stroke="#5b7fc4" strokeOpacity={0.35} strokeWidth={width("c-g")} fill="none" />
+            {layout.pms.map((pm: any) => <path key={pm.id} d={`M ${COLX.gw + NW} ${layout.gwY} ${curve({ x: COLX.gw + NW, y: layout.gwY }, { x: COLX.pm, y: pm.y })}`} stroke="#5b7fc4" strokeOpacity={0.35} strokeWidth={width(`g-p-${pm.id}`)} fill="none" />)}
             {layout.pms.flatMap((pm: any) => pm.members.map((x: any) => {
               const up = layout.ups.find((u: any) => u.model_id === x.model_id);
               const live = snapshot?.models?.[x.model_id];
               const dead = live?.breaker === "open";
               return <path key={`${pm.id}-${x.id}`} d={`M ${COLX.pm + NW} ${pm.y} ${curve({ x: COLX.pm + NW, y: pm.y }, { x: COLX.up, y: up.y })}`}
-                stroke={dead ? "#d9776f" : "url(#edge)"} strokeOpacity={dead ? 0.5 : 0.35} strokeDasharray={dead ? "5 5" : undefined} strokeWidth={width(`p-u-${pm.id}-${x.model_id}`)} fill="none" />;
+                stroke={dead ? "#d9776f" : "#5b7fc4"} strokeOpacity={dead ? 0.5 : 0.35} strokeDasharray={dead ? "5 5" : undefined} strokeWidth={width(`p-u-${pm.id}-${x.model_id}`)} fill="none" />;
             }))}
             {/* nodes */}
             <Node x={COLX.client} y={layout.client.y} title="Clients" sub={`${totalIn} in flight`} accent="#ffffff22" />
             <Node x={COLX.gw} y={layout.gwY} title={gw.slug} sub={qd ? `${qd} queued` : "routing"} accent={qd ? "#d1a553" : "#5b7fc4"}>
               {qd > 0 && <g transform={`translate(${NW - 52},12)`}><rect width={42} height={20} rx={10} fill="#d1a55333" /><text x={21} y={14} textAnchor="middle" fill="#d1a553" fontSize={11}>{qd}</text></g>}
             </Node>
-            {layout.pms.map((pm: any) => <Node key={pm.id} x={COLX.pm} y={pm.y} title={pm.public_name} sub={`${pm.members.length} upstream · ${pm.strategy || gw.strategy}`} accent="#ffffff30" />)}
+            {layout.pms.map((pm: any) => <Node key={pm.id} x={COLX.pm} y={pm.y} title={pm.label || pm.public_name} sub={`${pm.members.length} upstream · ${pm.strategy || gw.strategy}`} accent="#ffffff30" />)}
             {layout.ups.map((u: any) => {
               const live = snapshot?.models?.[u.model_id] || { in_flight: 0, max_slots: u.max_slots };
               const st = snapshot?.endpoints?.[u.endpoint_id]?.status;

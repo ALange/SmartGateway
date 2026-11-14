@@ -4,6 +4,7 @@ import { Copy, FlaskConical, Pencil } from "lucide-react";
 import { api, gwUrl } from "../api";
 import { useLive } from "../live";
 import FlowGraph from "../components/FlowGraph";
+import LiveCharts from "../components/LiveCharts";
 import TestGateway from "../components/TestGateway";
 import { ms, PageHeader, fmt } from "../components/ui";
 
@@ -61,6 +62,7 @@ ${gw.has_keys ? `  -H "Authorization: Bearer <your-api-key>" \\\n` : ""}  -H "Co
           </div>
         </div>
       </div>
+      <div className="mt-5"><LiveCharts ids={[gw.id]} modelOrder={gw.models.flatMap((m: any) => m.members.map((x: any) => x.model_id))} /></div>
       {testing && <TestGateway gw={gw} onClose={() => setTesting(false)} />}
     </div>
   );

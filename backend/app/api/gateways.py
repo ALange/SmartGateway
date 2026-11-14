@@ -7,11 +7,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
-from .. import config
+from .. import config, guardrails
 from ..db import get_session
 from ..crypto import hash_key
 from ..models import ApiKey, Endpoint, Gateway, GatewayModel, Member, Model, RequestLog
 from ..router.limits import limiter
+from ..unified import INTERNAL_SLUG
 
 router = APIRouter(prefix="/api")
 
@@ -39,6 +40,7 @@ class GatewayModelIn(BaseModel):
     cache_streaming: bool = False
     cache_replay_speed: str = "instant"
     compress_mode: Optional[str] = None  # None = inherit global; off | shadow | on
+    guardrails: Optional[dict] = None  # None = all off
     members: list[MemberIn] = []
 
 
@@ -83,6 +85,10 @@ def validate(body: GatewayIn):
             raise HTTPException(400, "cache_replay_speed must be instant or realistic")
         if m.compress_mode not in (None, "", "off", "shadow", "on"):
             raise HTTPException(400, "compress_mode must be off, shadow, on or empty (inherit)")
+        try:
+            guardrails.normalize(m.guardrails)
+        except ValueError as e:
+            raise HTTPException(400, f"Guardrails of '{m.public_name}': {e}")
         if m.cache_ttl is not None and not (1 <= m.cache_ttl <= 30 * 86400):
             raise HTTPException(400, "Cache TTL must be between 1 second and 30 days")
     if body.strategy not in config.STRATEGIES:
@@ -104,12 +110,16 @@ def apply_models(gw: Gateway, body: GatewayIn, s: Session):
         s.delete(gm)
     s.flush()
     for gmi in body.models:
+        missing = guardrails.library.missing_refs(s, gmi.guardrails)
+        if missing:
+            raise HTTPException(400, f"Guardrails of '{gmi.public_name}' reference unknown content filters: {', '.join(missing)}")
         gm = GatewayModel(gateway_id=gw.id, public_name=gmi.public_name.strip(), strategy=gmi.strategy or None,
                           sticky=gmi.sticky, system_prompt=gmi.system_prompt or None,
                           max_tokens_cap=gmi.max_tokens_cap or None, default_params=gmi.default_params or {},
                           cache_enabled=gmi.cache_enabled, cache_ttl=gmi.cache_ttl or None,
                           cache_any_temperature=gmi.cache_any_temperature, compress_mode=gmi.compress_mode or None,
-                          cache_streaming=gmi.cache_streaming, cache_replay_speed=gmi.cache_replay_speed)
+                          cache_streaming=gmi.cache_streaming, cache_replay_speed=gmi.cache_replay_speed,
+                          guardrails=gmi.guardrails or None)
         s.add(gm)
         s.flush()
         for mi in gmi.members:
@@ -119,8 +129,9 @@ def apply_models(gw: Gateway, body: GatewayIn, s: Session):
 
 
 @router.get("/gateways")
-def list_gateways(s: Session = Depends(get_session)):
-    return [gw_out(g, s) for g in s.exec(select(Gateway)).all()]
+def list_gateways(all: bool = False, s: Session = Depends(get_session)):
+    # the hidden gateway that holds the unified endpoint's own models is only listed on request
+    return [gw_out(g, s) for g in s.exec(select(Gateway)).all() if all or g.slug != INTERNAL_SLUG]
 
 
 @router.get("/gateways/{gw_id}")
@@ -153,6 +164,8 @@ def update_gateway(gw_id: int, body: GatewayIn, s: Session = Depends(get_session
     gw = s.get(Gateway, gw_id)
     if not gw:
         raise HTTPException(404)
+    if gw.slug == INTERNAL_SLUG:
+        raise HTTPException(400, "This gateway is managed by the unified endpoint settings")
     slug = slugify(body.slug or gw.slug)
     other = s.exec(select(Gateway).where(Gateway.slug == slug)).first()
     if other and other.id != gw.id:
@@ -171,6 +184,8 @@ def delete_gateway(gw_id: int, s: Session = Depends(get_session)):
     gw = s.get(Gateway, gw_id)
     if not gw:
         raise HTTPException(404)
+    if gw.slug == INTERNAL_SLUG:
+        raise HTTPException(400, "This gateway is managed by the unified endpoint settings")
     apply_models(gw, GatewayIn(name=gw.name, models=[]), s)
     for k in s.exec(select(ApiKey).where(ApiKey.gateway_id == gw_id)).all():
         s.delete(k)

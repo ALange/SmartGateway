@@ -13,14 +13,17 @@ from sqlmodel import select
 from . import settings_store as st
 from .crypto import hash_key
 from .db import session
-from .models import ApiKey, Gateway, GatewayModel
+from .models import ApiKey, Endpoint, Gateway, GatewayModel, Member, Model
+
+INTERNAL_SLUG = "__unified__"   # hidden gateway that holds the upstream models exposed directly on the unified endpoint
 
 
-def build_aliases(cfg: list[dict], gateways: dict[int, Gateway], models: dict[int, list[str]]) -> list[dict]:
+def build_aliases(cfg: list[dict], gateways: dict[int, Gateway], models: dict[int, list[str]], direct: Optional[list[dict]] = None) -> list[dict]:
     """Pure: turn the saved selection into the list of model names the unified endpoint serves.
 
     Each item: {alias, gateway (Gateway), model (public name on that gateway), default (bool)}.
     Selected gateways that no longer exist (or have no models) are skipped; clashing names get the slug appended.
+    `direct`: upstream models exposed on their own, [{name, gateway (the internal Gateway), model (its public name)}].
     """
     out: list[dict] = []
     used: set[str] = set()
@@ -43,19 +46,68 @@ def build_aliases(cfg: list[dict], gateways: dict[int, Gateway], models: dict[in
         if len(names) > 1:
             for m in names:
                 out.append({"alias": unique(f"{base}/{m}", gw), "gateway": gw, "model": m, "default": False})
+    for d in direct or []:
+        n = (d["name"] or "").strip()
+        for cand in (n, f"{n} (model)", f"{n} (model {d['model']})"):
+            if cand and cand.lower() not in used:
+                used.add(cand.lower())
+                out.append({"alias": cand, "gateway": d["gateway"], "model": d["model"], "default": False, "direct": True})
+                break
     return out
 
 
+def internal_gateway(s) -> Optional[Gateway]:
+    return s.exec(select(Gateway).where(Gateway.slug == INTERNAL_SLUG)).first()
+
+
+def sync_models(entries: list[dict]) -> None:
+    """Make the internal gateway hold exactly one public model (with one upstream member) per entry {model_id, name}."""
+    with session() as s:
+        gw = internal_gateway(s)
+        if gw is None:
+            if not entries:
+                return
+            gw = Gateway(slug=INTERNAL_SLUG, name="Unified models", strategy="least_busy", queue_timeout=60.0, max_retries=2)
+            s.add(gw)
+            s.flush()
+        have = {gm.public_name: gm for gm in s.exec(select(GatewayModel).where(GatewayModel.gateway_id == gw.id)).all()}
+        wanted = {e["name"]: e["model_id"] for e in entries}
+        for name, gm in have.items():
+            if name not in wanted:
+                for mem in s.exec(select(Member).where(Member.gateway_model_id == gm.id)).all():
+                    s.delete(mem)
+                s.delete(gm)
+        for name, model_id in wanted.items():
+            gm = have.get(name)
+            if gm is None:
+                gm = GatewayModel(gateway_id=gw.id, public_name=name)
+                s.add(gm)
+                s.flush()
+            mems = s.exec(select(Member).where(Member.gateway_model_id == gm.id)).all()
+            if len(mems) == 1 and mems[0].model_id == model_id:
+                continue
+            for mem in mems:
+                s.delete(mem)
+            s.flush()
+            s.add(Member(gateway_model_id=gm.id, model_id=model_id))
+        s.commit()
+
+
 def exposed(settings: Optional[dict] = None) -> list[dict]:
-    cfg = (settings or st.get_cached()).get("unified_gateways") or []
-    if not cfg:
+    cfg_all = settings or st.get_cached()
+    cfg = cfg_all.get("unified_gateways") or []
+    direct_cfg = cfg_all.get("unified_models") or []
+    if not cfg and not direct_cfg:
         return []
     with session() as s:
         gws = {g.id: g for g in s.exec(select(Gateway)).all()}
         models: dict[int, list[str]] = {}
         for gm in s.exec(select(GatewayModel).order_by(GatewayModel.id)).all():
             models.setdefault(gm.gateway_id, []).append(gm.public_name)
-    return build_aliases(cfg, gws, models)
+    internal = next((g for g in gws.values() if g.slug == INTERNAL_SLUG), None)
+    direct = [{"name": e["name"], "gateway": internal, "model": e["name"]} for e in direct_cfg
+              if internal is not None and e.get("name") in models.get(internal.id, [])]
+    return build_aliases(cfg, gws, models, direct)
 
 
 def resolve(wanted: str, aliases: list[dict]) -> Optional[dict]:

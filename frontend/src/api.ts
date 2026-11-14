@@ -37,4 +37,5 @@ export const STRATEGIES: Record<string, string> = {
 };
 export const PALETTE = ["#4f7fd9", "#5fa3b5", "#8a8fc4", "#62a58f", "#c2a05a", "#b0809a", "#c08b5f"];
 export const gwUrl = (slug: string) => `${location.origin}/gw/${slug}/v1`;
+export const unifiedUrl = () => `${location.origin}/unified/v1`;
 export const adminGwUrl = (slug: string) => `${location.origin}/api/admin-gw/${slug}/v1`;

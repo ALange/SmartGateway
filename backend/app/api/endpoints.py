@@ -8,6 +8,7 @@ from .. import config, discovery
 from ..db import get_session
 from ..models import Endpoint, GatewayModel, Member, Model
 from ..router import health
+from ..router.scheduler import scheduler
 
 router = APIRouter(prefix="/api")
 
@@ -40,6 +41,16 @@ def ep_out(ep: Endpoint, s: Session) -> dict:
     return d
 
 
+def _delete_model(s: Session, m: Model) -> None:
+    """Delete a model with its gateway memberships and runtime state (Member has no cascade)."""
+    members = s.exec(select(Member).where(Member.model_id == m.id)).all()
+    member_ids = [mem.id for mem in members]
+    for mem in members:
+        s.delete(mem)
+    scheduler.forget_model(m.id, member_ids)
+    s.delete(m)
+
+
 async def sync_models(ep: Endpoint, s: Session, probe: bool, free_out: Optional[list] = None) -> int:
     ep.provider = ep.provider or discovery.detect_provider(ep.base_url)
     found = await discovery.discover(ep.base_url, ep.api_key, probe and not ep.provider, ep.provider)
@@ -51,7 +62,7 @@ async def sync_models(ep: Endpoint, s: Session, probe: bool, free_out: Optional[
     for dm in found:
         m = existing.pop(dm.upstream_id, None)
         if m is None:
-            m = Model(endpoint_id=ep.id, upstream_id=dm.upstream_id,
+            m = Model(endpoint_id=ep.id, upstream_id=dm.upstream_id, enabled=False,  # new models stay off until enabled by hand
                       max_slots=dm.max_slots or (config.HOSTED_SLOTS if ep.provider else config.DEFAULT_SLOTS))
         # keep manual overrides, refresh detected ones
         manual = {c for c, src in (m.cap_sources or {}).items() if src == "manual"}
@@ -60,8 +71,13 @@ async def sync_models(ep: Endpoint, s: Session, probe: bool, free_out: Optional[
         m.cap_sources = {**dm.sources, **{c: "manual" for c in manual}}
         if dm.max_slots and not m.id:
             m.max_slots = dm.max_slots
-        m.context_length = dm.context_length
+        if dm.context_length is not None:
+            m.context_length = dm.context_length
         s.add(m)
+    # drop models the upstream no longer lists; an empty result is treated as "unknown", not "all gone"
+    if found:
+        for m in existing.values():
+            _delete_model(s, m)
     s.commit()
     return len(found)
 
@@ -102,7 +118,7 @@ async def add_endpoint(body: EndpointIn, s: Session = Depends(get_session)):
         good, why = await discovery.check_key(base, body.api_key, free[0], provider)
         if good is False:
             for m in s.exec(select(Model).where(Model.endpoint_id == ep.id)).all():
-                s.delete(m)
+                _delete_model(s, m)
             s.delete(ep)
             s.commit()
             raise HTTPException(400, f"The API key was rejected by {discovery.PROVIDERS[provider]['label']} ({why})")
@@ -147,9 +163,7 @@ def delete_endpoint(ep_id: int, s: Session = Depends(get_session)):
     if not ep:
         raise HTTPException(404)
     for m in s.exec(select(Model).where(Model.endpoint_id == ep_id)).all():
-        for mem in s.exec(select(Member).where(Member.model_id == m.id)).all():
-            s.delete(mem)
-        s.delete(m)
+        _delete_model(s, m)
     s.delete(ep)
     s.commit()
     health.status.pop(ep_id, None)

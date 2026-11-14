@@ -18,6 +18,8 @@ from .compat import anthropic as anth
 from .compat import responses as resp_api
 from .crypto import hash_key
 from .db import session
+from . import guardrails
+from .guardrails import library
 from .compression import pipeline as comp_pipeline
 from .compression.aligner import analyze_alignment
 from .compression.context import analyze_context
@@ -161,14 +163,14 @@ def _token_from(request: Request) -> str:
     return request.headers.get("x-api-key", "").strip()
 
 
-def authenticate(slug: Optional[str], request: Request):
+def authenticate(slug: Optional[str], request: Request, allow_internal: bool = False):
     """Return (gateway, api_key_row_or_None, error_response_or_None)."""
     token = _token_from(request)
     with session() as s:
         key = None
         if slug:
             gw = s.exec(select(Gateway).where(Gateway.slug == slug)).first()
-            if not gw:
+            if not gw or (gw.slug == unified.INTERNAL_SLUG and not allow_internal):   # the hidden gateway behind unified models is not addressable on its own
                 return None, None, err(404, f"Gateway '{slug}' not found", "not_found")
         else:
             if not token:
@@ -363,6 +365,25 @@ async def _route(gw, gm, key, route, body, form_files, headers_in, token, prompt
     async def emit(rec):
         await log_request(rec, comp_events)
 
+    # guardrails, input side (PII / injection / content filters). Runs before the cache so redacted text is what gets keyed and sent.
+    gcfg = guardrails.safe_normalize(gm.guardrails)
+    grules = library.resolve(gcfg) if gcfg and gcfg["filters"]["mode"] == "on" else []   # content filters picked from the library
+    gr_buffered = guardrails.buffered(gcfg, grules)
+    if gcfg:
+        gres = guardrails.apply_input(route, body, gcfg, grules)
+        if gres.action:
+            analysis["guardrail_action"] = gres.action
+            analysis["guardrail_findings"] = gres.findings or None
+        if gres.action == "blocked":
+            events.publish({"type": "end", "ok": False, "status": 400, "error": "blocked by guardrails", **base_evt})
+            await emit(L(gateway_id=gw.id, key_id=key_id, public_model=gm.public_name, route=route, requirements=req_label,
+                         status=400, ok=False, outcome="blocked", attempts=0, total_ms=int((time.time() - t0) * 1000),
+                         error="blocked by guardrails"))
+            return err(400, gres.reason, "guardrail_blocked")
+        if gres.body is not body:
+            body = gres.body
+            prompt_est, out_est = estimate_tokens(route, body)
+
     # response cache (exact match; streams too if the model opted in; configured per public model). Key uses the original body.
     ckey = None
     plan = cache_plan(gm, route, body, headers_in.get("x-sg-cache", ""), is_stream)
@@ -370,7 +391,8 @@ async def _route(gw, gm, key, route, body, form_files, headers_in, token, prompt
     if plan in ("use", "bypass", "skip"):
         analysis["cache_state"] = "miss" if plan == "use" else plan  # a hit overrides this below
     if plan == "use":
-        ckey = cache.make_key(gw.id, route, {**body, "model": gm.public_name})
+        gfp = guardrails.fingerprint(gcfg, grules)
+        ckey = cache.make_key(gw.id, route, {**body, "model": gm.public_name, **({"_sg_guardrails": gfp} if gfp else {})})
         hit = await cache.cache.get(ckey)
         if hit is not None and is_stream and len(hit.get("choices") or []) != 1:
             hit = None  # cannot replay a multi-choice entry as a stream: serve live
@@ -464,6 +486,12 @@ async def _route(gw, gm, key, route, body, form_files, headers_in, token, prompt
     overflow_body: Optional[str] = None
     attempts = 0
     queue_ms = 0
+    buffered_out = gr_buffered and route == "chat/completions"
+    up_stream = is_stream and not buffered_out   # buffered output checks need the complete answer: the upstream call is not streamed
+    out_retries = 0
+    retry_msgs: list = []
+    pre_raw: Optional[bytes] = None
+    gr_failed = False
     while True:
         tq = time.time()
         try:
@@ -498,7 +526,12 @@ async def _route(gw, gm, key, route, body, form_files, headers_in, token, prompt
 
         fwd = dict(body)
         fwd["model"] = c.upstream_id
-        if is_stream and "stream_options" not in fwd:
+        if retry_msgs and isinstance(body.get("messages"), list):
+            fwd["messages"] = [*body["messages"], *retry_msgs]
+        if buffered_out:
+            fwd["stream"] = False
+            fwd.pop("stream_options", None)
+        elif is_stream and "stream_options" not in fwd:
             fwd["stream_options"] = {"include_usage": True}
         headers = {"Authorization": f"Bearer {c.api_key}"} if c.api_key else {}
         if c.provider:
@@ -551,11 +584,69 @@ async def _route(gw, gm, key, route, body, form_files, headers_in, token, prompt
                 events.publish({"type": "retry", "model_id": c.model_id, "endpoint_id": c.endpoint_id,
                                 "error": last_error, **base_evt})
                 continue
+        if buffered_out and resp.status_code == 200:
+            try:
+                raw0 = await resp.aread()
+            except Exception as e:  # noqa: BLE001
+                await resp.aclose()
+                last_error = f"{c.endpoint_name}: read error: {e}"
+                scheduler.fail(c)
+                scheduler.release(c, ok=False)
+                tried.add(c.member_id)
+                if attempts > gw.max_retries:
+                    return await _finish_error(gw, gm, key_id, route, req_label, 502, last_error, attempts, t0, queue_ms, base_evt, L, emit)
+                continue
+            await resp.aclose()
+            try:
+                data0 = json.loads(raw0)
+            except ValueError:
+                data0 = None
+            if isinstance(data0, dict):
+                ores = guardrails.check_output(data0, gcfg, body, grules)
+                if ores.findings:
+                    analysis["guardrail_findings"] = {**(analysis.get("guardrail_findings") or {}), **ores.findings}
+                if ores.blocked or (not ores.ok and out_retries >= gcfg["output"]["max_retries"] and gcfg["output"]["on_fail"] == "error"):
+                    blocked = ores.blocked
+                    analysis["guardrail_action"] = guardrails.worst(analysis.get("guardrail_action"), "blocked" if blocked else "failed")
+                    if out_retries:
+                        analysis["output_retries"] = out_retries
+                    scheduler.release(c, ok=True)
+                    msg_ = "Response blocked by guardrails: " + ores.error if blocked else \
+                        f"The model's output failed validation after {out_retries} retr{'y' if out_retries == 1 else 'ies'}: {ores.error}"
+                    events.publish({"type": "end", "ok": False, "status": 422, "error": msg_[:200], **base_evt})
+                    await emit(L(gateway_id=gw.id, key_id=key_id, public_model=gm.public_name, endpoint_id=c.endpoint_id,
+                                 model_id=c.model_id, upstream_model=c.upstream_id, route=route, requirements=req_label,
+                                 status=422, ok=False, outcome="blocked" if blocked else "invalid_output", attempts=attempts,
+                                 queue_ms=queue_ms, total_ms=int((time.time() - t0) * 1000), error=msg_[:300]))
+                    return err(422, msg_, "guardrail_blocked" if blocked else "output_validation_failed")
+                if not ores.ok:
+                    if out_retries < gcfg["output"]["max_retries"]:   # ask again (same model, optionally telling it what was wrong)
+                        out_retries += 1
+                        scheduler.release(c, ok=True)
+                        retry_msgs = []
+                        if gcfg["output"]["feedback"]:
+                            prev = ((data0.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
+                            retry_msgs = [{"role": "assistant", "content": str(prev)[:4000]},
+                                          {"role": "user", "content": f"Your previous reply was rejected: {ores.error}. Reply again with a corrected answer only."}]
+                        events.publish({"type": "retry", "model_id": c.model_id, "endpoint_id": c.endpoint_id,
+                                        "error": "output validation: " + ores.error[:120], **base_evt})
+                        continue
+                    gr_failed = True   # on_fail == passthrough: deliver the answer, flagged
+                analysis["guardrail_action"] = guardrails.worst(
+                    analysis.get("guardrail_action"),
+                    "failed" if gr_failed else "retried" if out_retries else ores.action)
+                if out_retries:
+                    analysis["output_retries"] = out_retries
+                pre_raw = json.dumps(ores.data).encode()
+            else:
+                pre_raw = raw0
         break
 
     if skey is not None:
         affinity.put(gm.id, skey, c.member_id)
     out_headers = {k: v for k, v in resp.headers.items() if k.lower() not in HOP}
+    if gr_failed:
+        out_headers["X-SG-Guardrail"] = "output-invalid"
     out_headers.update({"X-SG-Request-Id": rid, "X-SG-Upstream": c.upstream_id, "X-SG-Endpoint": c.endpoint_name,
                         "X-SG-Queue-Ms": str(queue_ms), "X-SG-Attempts": str(attempts),
                         **({"X-SG-Compressed": str(compressed_tokens)} if compressed_tokens else {}),
@@ -577,9 +668,9 @@ async def _route(gw, gm, key, route, body, form_files, headers_in, token, prompt
                         "error": rec.error, **base_evt})
         await emit(rec)
 
-    if not is_stream or resp.status_code >= 400:
+    if not up_stream or resp.status_code >= 400:
         try:
-            raw = await resp.aread()
+            raw = pre_raw if pre_raw is not None else await resp.aread()
         except Exception as e:  # noqa: BLE001
             await resp.aclose()
             await finalize(False, f"read error: {e}")
@@ -593,6 +684,11 @@ async def _route(gw, gm, key, route, body, form_files, headers_in, token, prompt
                 usage = data.get("usage") or {} if isinstance(data, dict) else {}
                 rec.prompt_tokens = int(usage.get("prompt_tokens") or 0)
                 rec.completion_tokens = int(usage.get("completion_tokens") or 0)
+                if resp.status_code == 200 and isinstance(data, dict) and route in CHAT_ROUTES:
+                    ch0 = (data.get("choices") or [{}])[0] or {}
+                    msg = ch0.get("message") or {}
+                    rec.finish_reason = ch0.get("finish_reason")
+                    rec.outcome = classify_outcome(rec.finish_reason, len(msg.get("content") or ""), len(msg.get("reasoning_content") or msg.get("reasoning") or ""), bool(msg.get("tool_calls")))
                 rewrite_model(data, gm.public_name)
                 entry = None
                 if ckey and resp.status_code == 200:  # read rec BEFORE finalize(): committing the log row expires its attributes
@@ -603,16 +699,21 @@ async def _route(gw, gm, key, route, body, form_files, headers_in, token, prompt
                     out_headers["X-SG-Cache"] = "miss"
                 elif cache_state:
                     out_headers["X-SG-Cache"] = cache_state
+                if is_stream and buffered_out and resp.status_code == 200 and isinstance(data, dict) and len(data.get("choices") or []) == 1:
+                    # the client asked for a stream but the answer had to be checked first: replay the checked answer as SSE
+                    sse_headers = {k: v for k, v in out_headers.items() if k.lower() != "content-type"}
+                    return StreamingResponse(synthesize_stream(data, "instant"), media_type="text/event-stream", headers=sse_headers)
                 return JSONResponse(data, status_code=resp.status_code, headers=out_headers)
             except Exception:  # noqa: BLE001 non-json upstream body
                 pass
         await finalize(True)
         return Response(raw, status_code=resp.status_code, headers=out_headers, media_type=ctype or None)
 
-    agg = StreamAggregator(int(cache.cache.settings.get("cache_max_entry_kb", 512)) * 1024) if (ckey and is_stream) else None
+    agg = StreamAggregator(int(cache.cache.settings.get("cache_max_entry_kb", 512)) * 1024) if (ckey and up_stream) else None
 
     async def gen():
         ok, err_text, chunks, completed = True, None, 0, False
+        finish, n_content, n_reason, has_tools, aborted = None, 0, 0, False, False
         try:
             async for line in resp.aiter_lines():
                 if line.startswith("data:") and "[DONE]" not in line:
@@ -628,6 +729,10 @@ async def _route(gw, gm, key, route, body, form_files, headers_in, token, prompt
                             events.publish({"type": "first_token", "model_id": c.model_id, **base_evt})
                         if delta.get("content"):
                             chunks += 1
+                            n_content += len(delta["content"])
+                        n_reason += len(delta.get("reasoning_content") or delta.get("reasoning") or "")
+                        has_tools = has_tools or bool(delta.get("tool_calls"))
+                        finish = ch0.get("finish_reason") or finish
                         if obj.get("usage"):
                             rec.prompt_tokens = int(obj["usage"].get("prompt_tokens") or 0)
                             rec.completion_tokens = int(obj["usage"].get("completion_tokens") or 0)
@@ -638,7 +743,7 @@ async def _route(gw, gm, key, route, body, form_files, headers_in, token, prompt
                 yield line + "\n"
             completed = True  # upstream closed the stream normally (not an error, not a client disconnect)
         except (asyncio.CancelledError, GeneratorExit):
-            ok, err_text = True, "client disconnected"
+            ok, err_text, aborted = True, "client disconnected", True
             raise
         except Exception as e:  # noqa: BLE001
             ok, err_text = False, f"stream error: {type(e).__name__}: {e}"
@@ -659,6 +764,9 @@ async def _route(gw, gm, key, route, body, form_files, headers_in, token, prompt
                     entry[META_KEY] = {"ttft_ms": rec.ttft_ms, "gen_ms": gen_ms, "origin": "stream"}
                 except Exception:  # noqa: BLE001
                     log.exception("could not build the cache entry for a streamed response")
+            if resp.status_code == 200 and route in CHAT_ROUTES:
+                rec.finish_reason = finish
+                rec.outcome = classify_outcome(finish, n_content, n_reason, has_tools, completed=completed, client_abort=aborted, error=not ok and not aborted)
             await asyncio.shield(finalize(ok, err_text))
             if entry is not None:
                 _spawn(cache.cache.put(ckey, entry, gm.cache_ttl))
@@ -672,6 +780,24 @@ async def _route(gw, gm, key, route, body, form_files, headers_in, token, prompt
                            media_type=resp.headers.get("content-type", "text/event-stream"))
     sr._sg_stream = True  # the generator releases the limiter token itself
     return sr
+
+
+
+def classify_outcome(finish: Optional[str], content: int, reasoning: int, tools: bool, *, completed: bool = True, client_abort: bool = False, error: bool = False) -> str:
+    """How a model response ended, for the request log. content/reasoning = characters of answer / reasoning text seen."""
+    if finish is None:
+        if client_abort:
+            return "client_aborted"
+        if error:
+            return "stream_error"
+        return "truncated" if completed and (content or reasoning or tools) else "empty"   # upstream closed the stream without a finish reason
+    if finish == "length":
+        return "cut_by_limit" if content or tools else "cut_in_reasoning"   # token limit hit: mid-answer / still thinking
+    if finish == "content_filter":
+        return "filtered"
+    if not content and not tools:
+        return "no_answer" if reasoning else "empty"   # finished, but produced no answer text
+    return "complete"
 
 
 async def _finish_error(gw, gm, key_id, route, req_label, status, error, attempts, t0, queue_ms, base_evt, L=None, emit=None):
@@ -842,7 +968,7 @@ def _unified_models(aliases: list[dict], request: Request, mode: Optional[str] =
             if gw.id not in cache:
                 cache[gw.id] = {m["id"]: m for m in public_models(gw, None)}
         elif gw.id not in cache:
-            g, key, e = authenticate(gw.slug, request)
+            g, key, e = authenticate(gw.slug, request, allow_internal=True)
             if strict and key is None:   # unified keys are configured: a junk token must not unlock open gateways
                 e = True
             cache[gw.id] = None if e else {m["id"]: m for m in public_models(g, key)}
@@ -881,7 +1007,7 @@ async def unified_route(path: str, request: Request):
     if mode == "all":
         gw, key = entry["gateway"], None   # the unified key replaces the gateway's own key (and its limits)
     else:
-        gw, key, e = authenticate(entry["gateway"].slug, request)
+        gw, key, e = authenticate(entry["gateway"].slug, request, allow_internal=True)
         if not e and key is None and unified.keys():
             e = err(401, "Invalid API key", "invalid_api_key")
         if e:
