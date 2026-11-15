@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Loader2, Play } from "lucide-react";
 import { adminGwUrl, gwUrl, unifiedUrl } from "../api";
 import { chatCompletion } from "../lib/chatStream";
 import FlowGraph from "./FlowGraph";
+import { loadCouncilFlow } from "../lib/councilFlow";
 import { CapChip, Modal, ms } from "./ui";
 
 const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
@@ -12,6 +13,8 @@ export default function TestGateway({ gw, onClose }: { gw: any; onClose: () => v
   const base = gw.unified ? unifiedUrl() : adminGwUrl(gw.slug);
   const [token, setToken] = useState("");
   const auth: Record<string, string> = gw.unified && token ? { Authorization: `Bearer ${token}` } : {};
+  const [flow, setFlow] = useState<any>(null);
+  useEffect(() => { if (gw.kind === "council") loadCouncilFlow(gw).then(setFlow).catch(() => {}); }, [gw]);
   const [model, setModel] = useState(gw.models[0]?.public_name || "");
   const caps: string[] = gw.models.find((m: any) => m.public_name === model)?.capabilities || [];
   const modes = [
@@ -82,7 +85,7 @@ export default function TestGateway({ gw, onClose }: { gw: any; onClose: () => v
           </div>
           {gw.unified
             ? <div><label className="lbl">Unified API key (only if one is configured)</label><input className="input mono" value={token} onChange={(e) => setToken(e.target.value)} placeholder="sk-..." /></div>
-            : <FlowGraph gw={gw} />}
+            : gw.kind === "council" ? (flow && flow.models.length > 0 ? <FlowGraph gw={flow} /> : null) : <FlowGraph gw={gw} />}
           {rows.length > 0 && (
             <div className="space-y-2">
               {count > 1 && Object.keys(dist).length > 0 && (

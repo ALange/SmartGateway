@@ -6,6 +6,7 @@ import { chatCompletion } from "../lib/chatStream";
 import { CapChip, ms, PageHeader } from "../components/ui";
 import FlowGraph from "../components/FlowGraph";
 import CouncilTabs from "../components/CouncilTabs";
+import { loadCouncilFlow } from "../lib/councilFlow";
 
 type Msg = { role: "user" | "assistant"; text: string; image?: string; reasoning?: string; meta?: any; error?: string; council?: any };
 
@@ -54,6 +55,8 @@ export default function Playground() {
   const baseUrl = () => (gw?.unified ? unifiedUrl() : adminGwUrl(gw.slug));
   const authHeaders = (): Record<string, string> => (gw?.unified && token ? { Authorization: `Bearer ${token}` } : {});
   const cacheHeaders = (): Record<string, string> => ({ ...authHeaders(), ...(gw?.kind === "council" ? { "X-SG-Council-Details": "1" } : {}), ...(cacheMode === "force" ? { "X-SG-Cache": "1" } : cacheMode === "bypass" ? { "X-SG-Cache": "0" } : {}) });
+  const [cflow, setCflow] = useState<any>(null);
+  useEffect(() => { setCflow(null); if (gw?.kind === "council") loadCouncilFlow(gw).then(setCflow).catch(() => {}); }, [gw]);
   const gm = gw?.models.find((m: any) => m.public_name === model);
   const caps: string[] = gm?.capabilities || [];
 
@@ -170,7 +173,7 @@ export default function Playground() {
         </div>
 
         <div className="min-w-0 space-y-5">
-          {gw && (gw.unified ? gw.flow.models.length > 0 && <FlowGraph key="unified" gw={gw.flow} /> : gw.kind !== "council" && gw.models.length > 0 && <FlowGraph key={gw.id} gw={gw} />)}
+          {gw && (gw.unified ? gw.flow.models.length > 0 && <FlowGraph key="unified" gw={gw.flow} /> : gw.kind === "council" ? (cflow && cflow.models.length > 0 && <FlowGraph key={cflow.id} gw={cflow} />) : gw.models.length > 0 && <FlowGraph key={gw.id} gw={gw} />)}
           {ctest && (() => { const v = verdict(ctest); return (
             <div className="card card-pad">
               <div className="mb-3 flex items-center justify-between"><h3 className="flex items-center gap-2 text-sm font-semibold"><FlaskConical size={14} /> Cache test</h3><button className="text-xs text-[#8a92a6] hover:text-white" onClick={() => setCtest(null)}>dismiss</button></div>
