@@ -10,7 +10,7 @@ from sqlmodel import Session, select
 
 from .. import retention
 from ..db import get_session
-from ..models import AuditEvent, RequestLog
+from ..models import AuditEvent, CouncilRun, RequestLog
 
 router = APIRouter(prefix="/api")
 
@@ -88,6 +88,36 @@ def audit_list(limit: int = Query(100, le=500), before_id: Optional[int] = None,
 def audit_export(format: str = Query("csv", pattern="^(csv|jsonl)$"), since: Optional[float] = None, until: Optional[float] = None,
                  action: Optional[str] = None, target_type: Optional[str] = None, actor: Optional[str] = None, s: Session = Depends(get_session)):
     return _stream(_chunks(s, AuditEvent, _audit_conds(since, until, action, target_type, actor)), AUDIT_COLS, format, "audit-log")
+
+
+@router.get("/council/defaults")
+def council_defaults():
+    from .. import council
+    return {"review_prompt": council.REVIEW_PROMPT, "chairman_prompt": council.CHAIRMAN_PROMPT}
+
+
+@router.get("/council-runs")
+def council_runs(gateway_id: Optional[int] = None, limit: int = Query(50, le=200), s: Session = Depends(get_session)):
+    q = select(CouncilRun).order_by(CouncilRun.id.desc()).limit(limit)
+    if gateway_id:
+        q = q.where(CouncilRun.gateway_id == gateway_id)
+    return [{**r.model_dump(exclude={"details"}), "question": r.question[:200]} for r in s.exec(q).all()]
+
+
+@router.get("/council-runs/{run_id}")
+def council_run(run_id: int, s: Session = Depends(get_session)):
+    r = s.get(CouncilRun, run_id)
+    if not r:
+        raise HTTPException(404)
+    return r.model_dump()
+
+
+@router.delete("/council-runs/{run_id}")
+def council_run_delete(run_id: int, s: Session = Depends(get_session)):
+    r = s.get(CouncilRun, run_id)
+    if r:
+        s.delete(r); s.commit()
+    return {"ok": True}
 
 
 @router.get("/maintenance/db")

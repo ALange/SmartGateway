@@ -1,5 +1,5 @@
 export interface ChatMeta { status: number; upstream?: string; endpoint?: string; queue?: number; attempts?: string; cache?: string; replay?: string }
-export interface ChatUpdate { text?: string; reasoning?: string; ttft?: number; finish?: string; tokens?: string }
+export interface ChatUpdate { text?: string; reasoning?: string; ttft?: number; finish?: string; tokens?: string; council?: any }
 
 /** POST a chat completion (streaming or not) and report progress. Resolves with an error message if something failed. */
 export async function chatCompletion(
@@ -16,7 +16,7 @@ export async function chatCompletion(
     });
     if (o.body.stream && r.ok && r.body) {
       const reader = r.body.getReader(); const dec = new TextDecoder();
-      let buf = "", text = "", think = "", first = 0, finish = "", tokens = "";
+      let buf = "", text = "", think = "", first = 0, finish = "", tokens = "", council: any;
       for (;;) {
         const { done, value } = await reader.read(); if (done) break;
         buf += dec.decode(value, { stream: true });
@@ -31,7 +31,8 @@ export async function chatCompletion(
             if (th) think += th;
             if (ch?.finish_reason) finish = ch.finish_reason;
             if (j?.usage) tokens = `${j.usage.prompt_tokens}→${j.usage.completion_tokens}`;
-            onUpdate({ text, reasoning: think, ttft: first, finish, tokens });
+            if (j?.sg_council) council = j.sg_council;
+            onUpdate({ text, reasoning: think, ttft: first, finish, tokens, council });
           } catch { /* partial line */ }
         }
       }
@@ -41,7 +42,7 @@ export async function chatCompletion(
     if (!r.ok) return { error: j.error?.message || JSON.stringify(j) };
     const msg = j.choices?.[0]?.message;
     onUpdate({ text: msg?.content || "", reasoning: msg?.reasoning_content || msg?.reasoning, finish: j.choices?.[0]?.finish_reason,
-      tokens: j.usage ? `${j.usage.prompt_tokens}→${j.usage.completion_tokens}` : undefined, ttft: performance.now() - t0 });
+      tokens: j.usage ? `${j.usage.prompt_tokens}→${j.usage.completion_tokens}` : undefined, ttft: performance.now() - t0, council: j.sg_council });
     return {};
   } catch (e: any) {
     return { error: e.name === "AbortError" ? "stopped" : e.message };

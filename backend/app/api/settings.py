@@ -28,6 +28,7 @@ class SettingsIn(BaseModel):
     compression_retention_days: Optional[int] = None
     stress_retention_days: Optional[int] = None
     audit_retention_days: Optional[int] = None
+    council_retention_days: Optional[int] = None
 
 
 class TestIn(BaseModel):
@@ -36,7 +37,7 @@ class TestIn(BaseModel):
     password: Optional[str] = None  # None = the saved password (only when testing the saved URL), "" = no password
 
 
-RETENTION_KEYS = ("log_retention_days", "compression_retention_days", "stress_retention_days", "audit_retention_days")
+RETENTION_KEYS = ("log_retention_days", "compression_retention_days", "stress_retention_days", "audit_retention_days", "council_retention_days")
 
 
 def view() -> dict:

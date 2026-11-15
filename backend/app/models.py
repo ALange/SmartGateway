@@ -41,6 +41,8 @@ class Gateway(SQLModel, table=True):
     queue_timeout: float = 60.0
     max_retries: int = 2
     created_at: float = Field(default_factory=time.time)
+    kind: str = "router"  # router | council (see council.py)
+    council: Optional[dict] = Field(default=None, sa_column=Column(JSON))
 
 
 class GatewayModel(SQLModel, table=True):
@@ -133,6 +135,7 @@ class RequestLog(SQLModel, table=True):
     guardrail_action: Optional[str] = None  # pass | flagged | redacted | retried | failed | blocked
     guardrail_findings: Optional[dict] = Field(default=None, sa_column=Column(JSON))
     output_retries: Optional[int] = None
+    council_run_id: Optional[int] = None
 
 
 class ContentFilter(SQLModel, table=True):
@@ -210,3 +213,16 @@ class AuditEvent(SQLModel, table=True):
     status: int = 200
     fields: Optional[list] = Field(default=None, sa_column=Column(JSON))
     summary: str = ""
+
+
+class CouncilRun(SQLModel, table=True):
+    """One council request. Only stored when the council has store_runs on: it holds prompts and answers."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    ts: float = Field(default_factory=time.time, index=True)
+    gateway_id: int = Field(index=True)
+    key_id: Optional[int] = None
+    status: str = "running"  # running | done | failed
+    question: str = ""
+    details: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    final: str = ""
+    total_ms: int = 0

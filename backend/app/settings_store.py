@@ -27,6 +27,7 @@ DEFAULTS: dict[str, Any] = {
     "compression_retention_days": 0,
     "stress_retention_days": 0,
     "audit_retention_days": 0,
+    "council_retention_days": 0,
     "unified_enabled": False,        # expose several gateways as one endpoint (/unified/v1), model name = gateway name
     "unified_keys": [],              # API keys of the unified endpoint: [{id, name, key_hash, prefix, created_at}] (hashed, plaintext shown once)
     "unified_models": [],            # [{"model_id": int, "name": public name}]: upstream models exposed directly (backed by a hidden internal gateway)

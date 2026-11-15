@@ -13,6 +13,7 @@ import Dashboard from "./pages/Dashboard";
 import Endpoints from "./pages/Endpoints";
 import Gateways from "./pages/Gateways";
 import GatewayEditor from "./pages/GatewayEditor";
+import CouncilEditor, { EditRoute } from "./pages/CouncilEditor";
 import GatewayLive from "./pages/GatewayLive";
 import UnifiedLive from "./pages/UnifiedLive";
 import LiveAll from "./pages/LiveAll";
@@ -80,7 +81,8 @@ function Shell({ auth, onLogout }: { auth: { auth_required: boolean }; onLogout:
           <Route path="/endpoints" element={<Endpoints />} />
           <Route path="/gateways" element={<Gateways />} />
           <Route path="/gateways/new" element={<GatewayEditor />} />
-          <Route path="/gateways/:id/edit" element={<GatewayEditor />} />
+          <Route path="/councils/new" element={<CouncilEditor />} />
+          <Route path="/gateways/:id/edit" element={<EditRoute />} />
           <Route path="/gateways/unified" element={<UnifiedLive />} />
           <Route path="/gateways/:id" element={<GatewayLive />} />
           <Route path="/live" element={<LiveAll />} />

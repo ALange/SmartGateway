@@ -8,7 +8,7 @@ export async function api<T = any>(path: string, opts: RequestInit & { json?: an
   if (r.status === 401 && path.startsWith("/api/") && !path.startsWith("/api/login")) window.dispatchEvent(new Event("sg-unauth"));
   if (!r.ok) {
     let msg = `${r.status}`;
-    try { const d = await r.json(); msg = d.detail || d.error?.message || msg; } catch {}
+    try { const d = await r.json(); msg = d.detail?.message || d.detail || d.error?.message || msg; } catch {}
     throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
   }
   return r.json();

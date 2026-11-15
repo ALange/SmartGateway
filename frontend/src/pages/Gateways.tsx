@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Copy, Pencil, Plus, Trash2, Activity, FlaskConical, Gauge, Layers, Lock, Power } from "lucide-react";
+import { Copy, Pencil, Plus, Trash2, Activity, FlaskConical, Gauge, Layers, Lock, Power, Users } from "lucide-react";
 import { api, gwUrl, unifiedUrl, STRATEGIES } from "../api";
 import { CapChip, Empty, PageHeader } from "../components/ui";
 import TestGateway from "../components/TestGateway";
@@ -15,7 +15,13 @@ export default function Gateways() {
   const nav = useNavigate();
   const load = () => { api("/api/gateways").then(setGws); api("/api/unified").then(setUni).catch(() => setUni(null)); };
   useEffect(() => { load(); }, []);
-  const del = async (g: any) => { if (confirm(`Delete gateway "${g.name}"?`)) { await api(`/api/gateways/${g.id}`, { method: "DELETE" }); load(); } };
+  const gwName = (_g: any, r?: { gateway_id: number; model: string }) => (r ? `${gws.find((x) => x.id === r.gateway_id)?.name || "?"}/${r.model}` : "?");
+  const del = async (g: any) => {
+    if (!confirm(`Delete gateway "${g.name}"?`)) return;
+    try { await api(`/api/gateways/${g.id}`, { method: "DELETE" }); }
+    catch (e: any) { if (!confirm(`${e.message}\n\nDelete it anyway? Those councils will fail until you pick another model.`)) return; await api(`/api/gateways/${g.id}?force=true`, { method: "DELETE" }); }
+    load();
+  };
 
   const disableUni = async () => {
     if (confirm("Disable the unified endpoint? Clients using /unified/v1 stop working.")) { await api("/api/unified", { method: "PUT", json: { enabled: false } }); load(); }
@@ -26,20 +32,20 @@ export default function Gateways() {
   return (
     <div className="fadein">
       <PageHeader title="Smart Gateways" sub="Each gateway is a single OpenAI-compatible endpoint that fans out to your upstream models."
-        actions={<button className="btn primary" onClick={() => nav("/gateways/new")}><Plus size={16} /> New gateway</button>} />
+        actions={<><button className="btn" onClick={() => nav("/councils/new")} title="Several models answer, review each other and a chairman writes the final answer"><Users size={16} /> New council</button><button className="btn primary" onClick={() => nav("/gateways/new")}><Plus size={16} /> New gateway</button></>} />
       {gws.length === 0 && <Empty>No gateways yet. Create one to combine endpoint models behind a single API.</Empty>}
       <div className="grid gap-5 xl:grid-cols-2">
         {gws.map((g) => (
           <div key={g.id} className="card card-pad">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <Link to={`/gateways/${g.id}`} className="text-base font-semibold hover:text-[#9fb0ff]">{g.name}</Link>
-                <div className="mt-1 text-xs text-[#8b91b5]">{STRATEGIES[g.strategy]} · queue {g.queue_timeout}s · {g.has_keys ? "API key required" : "open access"}</div>
+                <Link to={g.kind === "council" ? `/gateways/${g.id}/edit` : `/gateways/${g.id}`} className="text-base font-semibold hover:text-[#9fb0ff]">{g.name}</Link>
+                <div className="mt-1 text-xs text-[#8b91b5]">{g.kind === "council" ? <><span className="chip mr-1" style={{ color: "#b79cf0", background: "#b79cf01f" }}>Council</span>{g.council?.councillors?.length || 0} councillors{g.council?.review_enabled === false ? "" : " · peer review"} · chairman {gwName(g, g.council?.chairman)}</> : <>{STRATEGIES[g.strategy]} · queue {g.queue_timeout}s</>} · {g.has_keys ? "API key required" : "open access"}</div>
               </div>
               <div className="flex flex-wrap justify-end gap-2">
                 <button className="btn whitespace-nowrap" onClick={() => setTesting(g)}><FlaskConical size={15} /> Test</button>
-                <button className="btn whitespace-nowrap" onClick={() => setStressing(g)} title="Measure peak throughput by ramping up concurrent requests"><Gauge size={15} /> Stress test</button>
-                <Link to={`/gateways/${g.id}`} className="btn"><Activity size={15} /> Live</Link>
+                {g.kind !== "council" && <button className="btn whitespace-nowrap" onClick={() => setStressing(g)} title="Measure peak throughput by ramping up concurrent requests"><Gauge size={15} /> Stress test</button>}
+                {g.kind !== "council" && <Link to={`/gateways/${g.id}`} className="btn"><Activity size={15} /> Live</Link>}
                 <Link to={`/gateways/${g.id}/edit`} className="btn"><Pencil size={15} /></Link>
                 <button className="btn danger" onClick={() => del(g)}><Trash2 size={15} /></button>
               </div>
@@ -55,7 +61,9 @@ export default function Gateways() {
                     <span className="mono font-medium">{m.public_name}</span>
                     <div className="flex flex-wrap gap-1">{m.capabilities.map((c: string) => <CapChip key={c} cap={c} />)}</div>
                   </div>
-                  <div className="mt-1 text-xs text-[#8b91b5]">{m.members.length} upstream: {m.members.map((x: any) => `${x.upstream_id}@${x.endpoint_name}`).join(", ")}</div>
+                  {g.kind === "council"
+                    ? <div className="mt-1 text-xs text-[#8b91b5]">{(g.council?.councillors || []).map((r: any) => gwName(g, r)).join(", ")}</div>
+                    : <div className="mt-1 text-xs text-[#8b91b5]">{m.members.length} upstream: {m.members.map((x: any) => `${x.upstream_id}@${x.endpoint_name}`).join(", ")}</div>}
                 </div>
               ))}
               {g.models.length === 0 && <div className="text-sm text-[#8b91b5]">No models exposed yet.</div>}

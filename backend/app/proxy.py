@@ -326,7 +326,11 @@ async def dispatch(gw: Gateway, key, route: str, body: dict, form_files, headers
         return err(e.status, e.message, e.code, {"Retry-After": str(e.retry_after)})
     resp = None
     try:
-        resp = await _route(gw, gm, key, route, body, form_files, headers_in, token, prompt_est, out_est)
+        if gw.kind == "council":
+            from . import council
+            resp = await council.run(gw, gm, key, route, body, headers_in, token)
+        else:
+            resp = await _route(gw, gm, key, route, body, form_files, headers_in, token, prompt_est, out_est)
         return resp
     finally:
         if not (resp is not None and getattr(resp, "_sg_stream", False)):

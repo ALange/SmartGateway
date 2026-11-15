@@ -5,8 +5,9 @@ import { adminGwUrl, api, unifiedUrl } from "../api";
 import { chatCompletion } from "../lib/chatStream";
 import { CapChip, ms, PageHeader } from "../components/ui";
 import FlowGraph from "../components/FlowGraph";
+import CouncilTabs from "../components/CouncilTabs";
 
-type Msg = { role: "user" | "assistant"; text: string; image?: string; reasoning?: string; meta?: any; error?: string };
+type Msg = { role: "user" | "assistant"; text: string; image?: string; reasoning?: string; meta?: any; error?: string; council?: any };
 
 export default function Playground() {
   const [gws, setGws] = useState<any[]>([]);
@@ -52,7 +53,7 @@ export default function Playground() {
   useEffect(() => { loadCache(); const t = setInterval(loadCache, 4000); return () => clearInterval(t); }, []);
   const baseUrl = () => (gw?.unified ? unifiedUrl() : adminGwUrl(gw.slug));
   const authHeaders = (): Record<string, string> => (gw?.unified && token ? { Authorization: `Bearer ${token}` } : {});
-  const cacheHeaders = (): Record<string, string> => ({ ...authHeaders(), ...(cacheMode === "force" ? { "X-SG-Cache": "1" } : cacheMode === "bypass" ? { "X-SG-Cache": "0" } : {}) });
+  const cacheHeaders = (): Record<string, string> => ({ ...authHeaders(), ...(gw?.kind === "council" ? { "X-SG-Council-Details": "1" } : {}), ...(cacheMode === "force" ? { "X-SG-Cache": "1" } : cacheMode === "bypass" ? { "X-SG-Cache": "0" } : {}) });
   const gm = gw?.models.find((m: any) => m.public_name === model);
   const caps: string[] = gm?.capabilities || [];
 
@@ -73,7 +74,7 @@ export default function Playground() {
     const { error } = await chatCompletion(
       { url: `${baseUrl()}/chat/completions`, signal: ac.signal, headers: cacheHeaders(), body: { model, messages: apiMsgs, temperature: temp, max_tokens: maxTok, stream } },
       (meta) => patch({ meta: { ...meta } }),
-      (u) => patch({ text: u.text ?? "", reasoning: u.reasoning }),
+      (u) => patch({ text: u.text ?? "", reasoning: u.reasoning, ...(u.council ? { council: u.council } : {}) }),
     );
     setMsgs((ms_) => ms_.map((m, i) => (i === ms_.length - 1 ? { ...m, error, meta: { ...(m.meta || {}), total: performance.now() - t0 } } : m)));
     setBusy(false);
@@ -169,7 +170,7 @@ export default function Playground() {
         </div>
 
         <div className="min-w-0 space-y-5">
-          {gw && (gw.unified ? gw.flow.models.length > 0 && <FlowGraph key="unified" gw={gw.flow} /> : gw.models.length > 0 && <FlowGraph key={gw.id} gw={gw} />)}
+          {gw && (gw.unified ? gw.flow.models.length > 0 && <FlowGraph key="unified" gw={gw.flow} /> : gw.kind !== "council" && gw.models.length > 0 && <FlowGraph key={gw.id} gw={gw} />)}
           {ctest && (() => { const v = verdict(ctest); return (
             <div className="card card-pad">
               <div className="mb-3 flex items-center justify-between"><h3 className="flex items-center gap-2 text-sm font-semibold"><FlaskConical size={14} /> Cache test</h3><button className="text-xs text-[#8a92a6] hover:text-white" onClick={() => setCtest(null)}>dismiss</button></div>
@@ -191,6 +192,7 @@ export default function Playground() {
                   {m.reasoning && <details className="mb-2 text-[#8a92a6]"><summary className="cursor-pointer text-xs">Reasoning ({m.reasoning.length} chars)</summary><div className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap text-xs italic scroll-thin">{m.reasoning}</div></details>}
                   <div className="whitespace-pre-wrap">{m.text || (m.role === "assistant" && busy && i === msgs.length - 1 && !m.error ? <span className="text-[#6b7196]">…</span> : "")}</div>
                   {m.error && <div className="mt-1 text-red-300">{m.error}</div>}
+                  {m.council && <CouncilTabs data={m.council} />}
                   {m.role === "assistant" && m.meta && (
                     <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-[#6b7196]">
                       {m.meta.upstream && <span>→ <span className="mono">{m.meta.upstream}</span> @ {m.meta.endpoint}</span>}

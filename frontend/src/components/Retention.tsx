@@ -8,6 +8,7 @@ const FIELDS: [string, string, string][] = [
   ["compression_retention_days", "Compression events", "compressionevent"],
   ["stress_retention_days", "Stress test runs", "stressrun"],
   ["audit_retention_days", "Audit log", "auditevent"],
+  ["council_retention_days", "Stored council runs", "councilrun"],
 ];
 const size = (b: number) => (b >= 1048576 ? (b / 1048576).toFixed(1) + " MB" : Math.round(b / 1024) + " KB");
 
@@ -37,7 +38,7 @@ export default function Retention() {
         {info && <span className="text-xs text-[#8a92a6]">database {size(info.size_bytes)}</span>}
       </div>
       <p className="mb-4 text-sm text-[#8b91b5]">Delete old rows automatically so the database does not grow forever. 0 days keeps everything. Request logs hold no prompts or answers, only metadata.</p>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {FIELDS.map(([k, label, table]) => (
           <div key={k}><label className="lbl">{label} · keep days</label>
             <input type="number" min={0} max={3650} className="input" value={v[k] ?? 0} onChange={(e) => setV({ ...v, [k]: +e.target.value })} />

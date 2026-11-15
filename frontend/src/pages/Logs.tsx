@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, PALETTE } from "../api";
-import { ms, PageHeader } from "../components/ui";
+import { Modal, ms, PageHeader } from "../components/ui";
+import CouncilTabs from "../components/CouncilTabs";
 import AuditLog from "../components/AuditLog";
 
 const OUTCOMES: Record<string, [string, string, string]> = {
@@ -24,6 +25,8 @@ export default function Logs() {
   const [gid, setGid] = useState("");
   const [errs, setErrs] = useState(false);
   const [probs, setProbs] = useState(false);
+  const [run, setRun] = useState<any>(null);
+  const openRun = (id: number) => api(`/api/council-runs/${id}`).then(setRun).catch(() => setRun({ missing: true }));
   const [tab, setTab] = useState<"requests" | "audit">("requests");
   useEffect(() => { api("/api/gateways").then(setGws); api("/api/endpoints").then(setEps); }, []);
   useEffect(() => {
@@ -57,7 +60,7 @@ export default function Logs() {
               <tr key={r.id} className="border-t border-white/5 hover:bg-white/[0.02]" title={r.error || ""}>
                 <td className="px-3 py-2 whitespace-nowrap text-[#8b91b5]">{new Date(r.ts * 1000).toLocaleTimeString()}</td>
                 <td className="px-3 py-2">{gwName(r.gateway_id)}</td>
-                <td className="mono px-3 py-2">{r.public_model}</td>
+                <td className="mono px-3 py-2">{r.public_model}{r.requirements === "council" && (r.council_run_id ? <button className="chip ml-2" style={{ color: "#b79cf0", background: "#b79cf01f" }} onClick={() => openRun(r.council_run_id)} title="Open the stored council run">Council · {r.attempts} calls</button> : <span className="chip ml-2" style={{ color: "#b79cf0", background: "#b79cf01f" }} title="Run storage is off for this council">Council · {r.attempts} calls</span>)}</td>
                 <td className="px-3 py-2">{r.upstream_model ? <><span className="mono">{r.upstream_model}</span> <span className="text-[#6b7196]">@ {epName(r.endpoint_id)}</span></> : "—"}</td>
                 <td className="px-3 py-2 text-xs text-[#8b91b5]">{r.requirements || "—"}{r.stream && " · stream"}</td>
                 <td className="px-3 py-2"><span className="chip" style={{ color: r.ok ? "#5fb585" : "#d9776f", background: (r.ok ? "#5fb585" : "#d9776f") + "1f" }}>{r.status}</span></td>
@@ -75,6 +78,16 @@ export default function Logs() {
         </table>
         {rows.length === 0 && <div className="p-6 text-center text-sm text-[#8b91b5]">No requests yet.</div>}
       </div>
+      {run && (
+        <Modal title="Council run" onClose={() => setRun(null)} wide>
+          {run.missing ? <p className="text-sm text-[#8b91b5]">This run was deleted by the retention policy.</p> : (<>
+            <div className="mb-2 text-xs text-[#6b7196]">{new Date(run.ts * 1000).toLocaleString()} · {ms(run.total_ms)} · {run.status}</div>
+            <div className="mb-1 text-xs font-semibold text-[#8a92a6]">Question</div>
+            <div className="mb-3 max-h-40 overflow-auto whitespace-pre-wrap rounded-md bg-black/30 p-2 text-xs scroll-thin">{run.question}</div>
+            <div className="mb-1 text-xs font-semibold text-[#8a92a6]">Final answer</div>
+            <div className="max-h-48 overflow-auto whitespace-pre-wrap rounded-md bg-black/30 p-2 text-sm scroll-thin">{run.final || "—"}</div>
+            {run.details?.stage1 && <CouncilTabs data={run.details} />}</>)}
+        </Modal>)}
     </div>
   );
 }

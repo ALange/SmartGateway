@@ -9,13 +9,14 @@ from sqlmodel import select
 
 from . import config, settings_store
 from .db import engine, session
-from .models import AuditEvent, CompressionEvent, RequestLog, StressRun
+from .models import AuditEvent, CompressionEvent, CouncilRun, RequestLog, StressRun
 
 log = logging.getLogger("smartgateway.retention")
 BATCH = 5000
 # setting -> (table, timestamp column)
 TARGETS = {"log_retention_days": (RequestLog, "ts"), "compression_retention_days": (CompressionEvent, "ts"),
-           "audit_retention_days": (AuditEvent, "ts"), "stress_retention_days": (StressRun, "started_at")}
+           "audit_retention_days": (AuditEvent, "ts"), "stress_retention_days": (StressRun, "started_at"),
+           "council_retention_days": (CouncilRun, "ts")}
 
 
 def _prune_table(model, col: str, cutoff: float) -> int:

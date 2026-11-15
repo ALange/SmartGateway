@@ -12,6 +12,7 @@ from ..db import get_session
 from ..crypto import hash_key
 from ..models import ApiKey, Endpoint, Gateway, GatewayModel, Member, Model, RequestLog
 from ..router.limits import limiter
+from .. import council
 from ..unified import INTERNAL_SLUG
 
 router = APIRouter(prefix="/api")
@@ -52,6 +53,8 @@ class GatewayIn(BaseModel):
     queue_timeout: float = 60.0
     max_retries: int = 2
     models: list[GatewayModelIn] = []
+    kind: str = "router"          # router | council
+    council: Optional[dict] = None  # council config (see council.py); for a council, `models` holds just its public model's settings
 
 
 def slugify(s: str) -> str:
@@ -79,7 +82,19 @@ def gw_out(gw: Gateway, s: Session) -> dict:
     return d
 
 
-def validate(body: GatewayIn):
+def validate(body: GatewayIn, s: Optional[Session] = None, self_id: Optional[int] = None):
+    if body.kind not in ("router", "council"):
+        raise HTTPException(400, "kind must be router or council")
+    if body.kind == "council":
+        try:
+            body.council = council.normalize(body.council)
+            if s is not None:
+                council.check_refs(s, body.council, self_id)
+        except ValueError as e:
+            raise HTTPException(400, f"Council: {e}")
+        if len(body.models) != 1:
+            raise HTTPException(400, "A council exposes exactly one public model")
+        body.models[0].members = []
     for m in body.models:
         if m.cache_replay_speed not in ("instant", "realistic"):
             raise HTTPException(400, "cache_replay_speed must be instant or realistic")
@@ -144,12 +159,13 @@ def get_gateway(gw_id: int, s: Session = Depends(get_session)):
 
 @router.post("/gateways")
 def create_gateway(body: GatewayIn, s: Session = Depends(get_session)):
-    validate(body)
+    validate(body, s)
     slug = slugify(body.slug or body.name)
     if s.exec(select(Gateway).where(Gateway.slug == slug)).first():
         raise HTTPException(400, f"Slug '{slug}' already in use")
     gw = Gateway(slug=slug, name=body.name, strategy=body.strategy,
-                 queue_timeout=body.queue_timeout, max_retries=body.max_retries)
+                 queue_timeout=body.queue_timeout, max_retries=body.max_retries,
+                 kind=body.kind, council=body.council if body.kind == "council" else None)
     s.add(gw)
     s.flush()
     apply_models(gw, body, s)
@@ -160,10 +176,12 @@ def create_gateway(body: GatewayIn, s: Session = Depends(get_session)):
 
 @router.put("/gateways/{gw_id}")
 def update_gateway(gw_id: int, body: GatewayIn, s: Session = Depends(get_session)):
-    validate(body)
     gw = s.get(Gateway, gw_id)
     if not gw:
         raise HTTPException(404)
+    if body.kind != gw.kind:
+        raise HTTPException(400, "A gateway cannot change between router and council")
+    validate(body, s, gw_id)
     if gw.slug == INTERNAL_SLUG:
         raise HTTPException(400, "This gateway is managed by the unified endpoint settings")
     slug = slugify(body.slug or gw.slug)
@@ -172,6 +190,7 @@ def update_gateway(gw_id: int, body: GatewayIn, s: Session = Depends(get_session
         raise HTTPException(400, f"Slug '{slug}' already in use")
     gw.slug, gw.name = slug, body.name
     gw.strategy, gw.queue_timeout, gw.max_retries = body.strategy, body.queue_timeout, body.max_retries
+    gw.council = body.council if gw.kind == "council" else None
     s.add(gw)
     apply_models(gw, body, s)
     s.commit()
@@ -180,10 +199,13 @@ def update_gateway(gw_id: int, body: GatewayIn, s: Session = Depends(get_session
 
 
 @router.delete("/gateways/{gw_id}")
-def delete_gateway(gw_id: int, s: Session = Depends(get_session)):
+def delete_gateway(gw_id: int, force: bool = False, s: Session = Depends(get_session)):
     gw = s.get(Gateway, gw_id)
     if not gw:
         raise HTTPException(404)
+    users = council.used_by(s, gw_id)
+    if users and not force:
+        raise HTTPException(409, detail={"message": f"Used by council gateways: {', '.join(users)}", "used_by": users})
     if gw.slug == INTERNAL_SLUG:
         raise HTTPException(400, "This gateway is managed by the unified endpoint settings")
     apply_models(gw, GatewayIn(name=gw.name, models=[]), s)
