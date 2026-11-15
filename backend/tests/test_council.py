@@ -285,3 +285,55 @@ def test_unsupported_routes_and_nesting(client, fake, team):
     assert r.status_code == 200 and r.json()["choices"][0]["message"]["content"] == "final-by-up-chair"
     client.delete(f"/api/gateways/{outer['id']}")
     client.delete(f"/api/gateways/{gw['id']}")
+
+
+# ------------------------------------------------------------------ endpoint-model roles
+def raw_model(upstream_id, enabled=True):
+    with Session(db.engine) as s:
+        ep = Endpoint(name="raw-ep", base_url="http://fake/v1", status="online")
+        s.add(ep); s.commit(); s.refresh(ep)
+        m = Model(endpoint_id=ep.id, upstream_id=upstream_id, capabilities=["chat"], max_slots=8, context_length=32000, enabled=enabled)
+        s.add(m); s.commit(); s.refresh(m)
+        health.status[ep.id] = "online"
+        return m.id
+
+
+def test_roles_can_be_endpoint_models_or_gateways_mixed(client, fake, team):
+    ma, mc = raw_model("raw-a"), raw_model("raw-chair")
+    body = {"name": f"mixed-{time.time_ns()}", "kind": "council", "models": [{"public_name": "senate", "members": []}],
+            "council": {"councillors": [{"model_id": ma}, role(team["up-b"]), role(team["up-c"])], "chairman": {"model_id": mc}}}
+    r = client.post("/api/gateways", json=body)
+    assert r.status_code == 200, r.text
+    gw = r.json()
+    assert gw["council"]["councillors"][0] == {"model_id": ma} and gw["council"]["chairman"] == {"model_id": mc}
+    # the hidden gateway behind endpoint-model roles is never listed (unless asked) and cannot be called or edited
+    assert "__council__" not in [g["slug"] for g in client.get("/api/gateways").json()]
+    hidden = next(g for g in client.get("/api/gateways?all=true").json() if g["slug"] == "__council__")
+    assert sorted(m["public_name"] for m in hidden["models"]) == sorted([f"model-{ma}", f"model-{mc}"])
+    assert client.post("/api/admin-gw/__council__/v1/chat/completions", json={"model": f"model-{ma}", "messages": [{"role": "user", "content": "x"}]}).status_code == 404
+    assert client.put(f"/api/gateways/{hidden['id']}", json={"name": "x", "models": []}).status_code == 400
+    r = ask(client, gw, headers={"X-SG-Council-Details": "1"})
+    assert r.status_code == 200 and r.json()["choices"][0]["message"]["content"] == "final-by-raw-chair"
+    assert {c["model"] for c in fake.calls if c["kind"] == "answer"} == {"raw-a", "up-b", "up-c"}   # each role reached its own upstream model
+    labels = [a["label"] for a in r.json()["sg_council"]["stage1"]]
+    assert labels[0] == "raw-ep/raw-a" and r.json()["sg_council"]["chairman"]["label"] == "raw-ep/raw-chair"
+    assert [c for c in fake.calls if c["kind"] == "review"] and all("raw-ep" not in c["prompt"] for c in fake.calls if c["kind"] == "review")
+    # streaming chairman through a model role
+    ev = sse(ask(client, gw, stream=True))
+    assert "final-by-raw-chair" in "".join(c["choices"][0]["delta"].get("content", "") for c in ev if c.get("choices"))
+    # editing the council drops models nobody uses any more; deleting it removes the hidden models
+    body["council"]["councillors"][0] = role(team["up-a"])
+    assert client.put(f"/api/gateways/{gw['id']}", json={**body, "slug": gw["slug"]}).status_code == 200
+    hidden = next(g for g in client.get("/api/gateways?all=true").json() if g["slug"] == "__council__")
+    assert [m["public_name"] for m in hidden["models"]] == [f"model-{mc}"]
+    client.delete(f"/api/gateways/{gw['id']}")
+    hidden = next(g for g in client.get("/api/gateways?all=true").json() if g["slug"] == "__council__")
+    assert hidden["models"] == []
+
+
+def test_model_roles_are_validated(client, fake, team):
+    mk = lambda **c: client.post("/api/gateways", json={"name": f"v-{time.time_ns()}", "kind": "council", "models": [{"public_name": "s", "members": []}],
+                                                         "council": {"councillors": [role(team["up-a"]), role(team["up-b"])], "chairman": role(team["up-chair"]), **c}})
+    assert mk(chairman={"model_id": 99999999}).status_code == 400
+    r = mk(chairman={"model_id": raw_model("off", enabled=False)})
+    assert r.status_code == 400 and "disabled" in r.json()["detail"]

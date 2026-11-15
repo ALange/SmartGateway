@@ -28,7 +28,7 @@ export default function Logs() {
   const [run, setRun] = useState<any>(null);
   const openRun = (id: number) => api(`/api/council-runs/${id}`).then(setRun).catch(() => setRun({ missing: true }));
   const [tab, setTab] = useState<"requests" | "audit">("requests");
-  useEffect(() => { api("/api/gateways").then(setGws); api("/api/endpoints").then(setEps); }, []);
+  useEffect(() => { api("/api/gateways?all=true").then(setGws); api("/api/endpoints").then(setEps); }, []);
   useEffect(() => {
     const load = () => api(`/api/logs?limit=200${gid ? `&gateway_id=${gid}` : ""}${errs ? "&only_errors=true" : ""}${probs ? "&problems=true" : ""}`).then(setRows);
     load(); const t = setInterval(load, 3000); return () => clearInterval(t);

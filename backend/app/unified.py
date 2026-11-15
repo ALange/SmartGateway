@@ -15,6 +15,7 @@ from .crypto import hash_key
 from .db import session
 from .models import ApiKey, Endpoint, Gateway, GatewayModel, Member, Model
 
+HIDDEN_SLUGS = ("__unified__", "__council__")   # internal gateways that are never listed or addressable on their own
 INTERNAL_SLUG = "__unified__"   # hidden gateway that holds the upstream models exposed directly on the unified endpoint
 
 

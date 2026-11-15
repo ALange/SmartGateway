@@ -170,7 +170,7 @@ def authenticate(slug: Optional[str], request: Request, allow_internal: bool = F
         key = None
         if slug:
             gw = s.exec(select(Gateway).where(Gateway.slug == slug)).first()
-            if not gw or (gw.slug == unified.INTERNAL_SLUG and not allow_internal):   # the hidden gateway behind unified models is not addressable on its own
+            if not gw or gw.slug == "__council__" or (gw.slug == unified.INTERNAL_SLUG and not allow_internal):   # the hidden gateway behind unified models is not addressable on its own
                 return None, None, err(404, f"Gateway '{slug}' not found", "not_found")
         else:
             if not token:
@@ -954,7 +954,7 @@ async def admin_gw_route(slug: str, path: str, request: Request):
     """Used by the admin UI (Test dialog, Playground): same pipeline, no API key, protected by admin auth."""
     with session() as s:
         gw = s.exec(select(Gateway).where(Gateway.slug == slug)).first()
-    if not gw:
+    if not gw or gw.slug == "__council__":
         return err(404, f"Gateway '{slug}' not found", "not_found")
     return await handle(gw, None, path, request)
 

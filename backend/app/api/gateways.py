@@ -13,7 +13,7 @@ from ..crypto import hash_key
 from ..models import ApiKey, Endpoint, Gateway, GatewayModel, Member, Model, RequestLog
 from ..router.limits import limiter
 from .. import council
-from ..unified import INTERNAL_SLUG
+from ..unified import HIDDEN_SLUGS, INTERNAL_SLUG
 
 router = APIRouter(prefix="/api")
 
@@ -146,7 +146,7 @@ def apply_models(gw: Gateway, body: GatewayIn, s: Session):
 @router.get("/gateways")
 def list_gateways(all: bool = False, s: Session = Depends(get_session)):
     # the hidden gateway that holds the unified endpoint's own models is only listed on request
-    return [gw_out(g, s) for g in s.exec(select(Gateway)).all() if all or g.slug != INTERNAL_SLUG]
+    return [gw_out(g, s) for g in s.exec(select(Gateway)).all() if all or g.slug not in HIDDEN_SLUGS]
 
 
 @router.get("/gateways/{gw_id}")
@@ -171,6 +171,8 @@ def create_gateway(body: GatewayIn, s: Session = Depends(get_session)):
     apply_models(gw, body, s)
     s.commit()
     s.refresh(gw)
+    if gw.kind == "council":
+        council.sync_models()
     return gw_out(gw, s)
 
 
@@ -182,8 +184,8 @@ def update_gateway(gw_id: int, body: GatewayIn, s: Session = Depends(get_session
     if body.kind != gw.kind:
         raise HTTPException(400, "A gateway cannot change between router and council")
     validate(body, s, gw_id)
-    if gw.slug == INTERNAL_SLUG:
-        raise HTTPException(400, "This gateway is managed by the unified endpoint settings")
+    if gw.slug in HIDDEN_SLUGS:
+        raise HTTPException(400, "This gateway is managed internally")
     slug = slugify(body.slug or gw.slug)
     other = s.exec(select(Gateway).where(Gateway.slug == slug)).first()
     if other and other.id != gw.id:
@@ -195,6 +197,8 @@ def update_gateway(gw_id: int, body: GatewayIn, s: Session = Depends(get_session
     apply_models(gw, body, s)
     s.commit()
     s.refresh(gw)
+    if gw.kind == "council":
+        council.sync_models()
     return gw_out(gw, s)
 
 
@@ -206,13 +210,16 @@ def delete_gateway(gw_id: int, force: bool = False, s: Session = Depends(get_ses
     users = council.used_by(s, gw_id)
     if users and not force:
         raise HTTPException(409, detail={"message": f"Used by council gateways: {', '.join(users)}", "used_by": users})
-    if gw.slug == INTERNAL_SLUG:
-        raise HTTPException(400, "This gateway is managed by the unified endpoint settings")
+    if gw.slug in HIDDEN_SLUGS:
+        raise HTTPException(400, "This gateway is managed internally")
     apply_models(gw, GatewayIn(name=gw.name, models=[]), s)
     for k in s.exec(select(ApiKey).where(ApiKey.gateway_id == gw_id)).all():
         s.delete(k)
+    was_council = gw.kind == "council"
     s.delete(gw)
     s.commit()
+    if was_council:
+        council.sync_models()
     return {"ok": True}
 
 

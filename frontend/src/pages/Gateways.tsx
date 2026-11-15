@@ -15,7 +15,13 @@ export default function Gateways() {
   const nav = useNavigate();
   const load = () => { api("/api/gateways").then(setGws); api("/api/unified").then(setUni).catch(() => setUni(null)); };
   useEffect(() => { load(); }, []);
-  const gwName = (_g: any, r?: { gateway_id: number; model: string }) => (r ? `${gws.find((x) => x.id === r.gateway_id)?.name || "?"}/${r.model}` : "?");
+  const [eps, setEps] = useState<any[]>([]);
+  useEffect(() => { api("/api/endpoints").then(setEps).catch(() => {}); }, []);
+  const gwName = (_g: any, r?: any) => {
+    if (!r) return "?";
+    if (r.model_id) { for (const e of eps) { const m = e.models.find((x: any) => x.id === r.model_id); if (m) return `${e.name}/${m.upstream_id}`; } return `model ${r.model_id}`; }
+    return `${gws.find((x) => x.id === r.gateway_id)?.name || "?"}/${r.model}`;
+  };
   const del = async (g: any) => {
     if (!confirm(`Delete gateway "${g.name}"?`)) return;
     try { await api(`/api/gateways/${g.id}`, { method: "DELETE" }); }

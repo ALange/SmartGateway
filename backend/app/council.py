@@ -16,9 +16,10 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from sqlmodel import select
 
 from .db import session
-from .models import CouncilRun, Gateway, RequestLog
+from .models import CouncilRun, Endpoint, Gateway, GatewayModel, Member, Model, RequestLog
 
 MAX_DEPTH = 3
+COUNCIL_SLUG = "__council__"   # hidden gateway that holds one public model (with one upstream member) per endpoint model used as a council role
 MAX_COUNCILLORS = 8
 _chain: contextvars.ContextVar[tuple] = contextvars.ContextVar("council_chain", default=())
 PASS_PARAMS = ("temperature", "top_p", "max_tokens", "max_completion_tokens", "seed", "stop")
@@ -53,7 +54,10 @@ PROMPT_KEYS = {"review_prompt": ("{question}", "{responses}"), "chairman_prompt"
 def normalize(cfg: Optional[dict]) -> dict:
     """Validate and complete a council config. Raises ValueError with a readable message."""
     c = dict(cfg or {})
-    role = lambda r: {"gateway_id": int(r["gateway_id"]), "model": str(r["model"]).strip()}
+    def role(r):
+        if r.get("model_id") not in (None, ""):
+            return {"model_id": int(r["model_id"])}
+        return {"gateway_id": int(r["gateway_id"]), "model": str(r["model"]).strip()}
     try:
         councillors = [role(r) for r in (c.get("councillors") or [])]
         chairman = role(c["chairman"]) if c.get("chairman") else None
@@ -85,20 +89,32 @@ def normalize(cfg: Optional[dict]) -> dict:
     return out
 
 
-def references(cfg: Optional[dict]) -> set[int]:
+def roles_of(cfg: Optional[dict]) -> list[dict]:
     if not cfg:
-        return set()
-    ids = {r["gateway_id"] for r in cfg.get("councillors", [])} | ({cfg["chairman"]["gateway_id"]} if cfg.get("chairman") else set())
-    if isinstance(cfg.get("reviewers"), list):
-        ids |= {r["gateway_id"] for r in cfg["reviewers"]}
-    return ids
+        return []
+    return list(cfg.get("councillors", [])) + ([cfg["chairman"]] if cfg.get("chairman") else []) + (cfg["reviewers"] if isinstance(cfg.get("reviewers"), list) else [])
+
+
+def references(cfg: Optional[dict]) -> set[int]:
+    """Gateways a council uses (roles that point at an endpoint model are not gateways)."""
+    return {r["gateway_id"] for r in roles_of(cfg) if "gateway_id" in r}
+
+
+def model_ids(cfg: Optional[dict]) -> set[int]:
+    return {r["model_id"] for r in roles_of(cfg) if "model_id" in r}
 
 
 def check_refs(s, cfg: dict, self_id: Optional[int]) -> None:
     """Every referenced gateway and public model exists, and the council does not (indirectly) include itself."""
     from .models import GatewayModel
-    roles = list(cfg["councillors"]) + [cfg["chairman"]] + (cfg["reviewers"] if isinstance(cfg["reviewers"], list) else [])
-    for r in roles:
+    for r in roles_of(cfg):
+        if "model_id" in r:
+            m = s.get(Model, r["model_id"])
+            if not m:
+                raise ValueError(f"model {r['model_id']} does not exist")
+            if not m.enabled:
+                raise ValueError(f"model '{m.upstream_id}' is disabled: enable it on the Endpoints page first")
+            continue
         g = s.get(Gateway, r["gateway_id"])
         if not g:
             raise ValueError(f"gateway {r['gateway_id']} does not exist")
@@ -193,6 +209,57 @@ def _gateway(gid: int) -> Optional[Gateway]:
         return g
 
 
+def model_name(model_id: int) -> str:
+    return f"model-{model_id}"
+
+
+def resolve(role: dict) -> tuple[Optional[Gateway], str]:
+    """(gateway, public model) a role is called through. An endpoint-model role goes through the hidden council gateway."""
+    if "model_id" in role:
+        with session() as s:
+            g = s.exec(select(Gateway).where(Gateway.slug == COUNCIL_SLUG)).first()
+            if g:
+                s.expunge(g)
+        return g, model_name(role["model_id"])
+    return _gateway(role["gateway_id"]), role["model"]
+
+
+def sync_models() -> None:
+    """Make the hidden gateway hold exactly one public model (one upstream member) for every endpoint model used by any council."""
+    with session() as s:
+        wanted: set[int] = set()
+        for g in s.exec(select(Gateway).where(Gateway.kind == "council")).all():
+            wanted |= model_ids(g.council)
+        gw = s.exec(select(Gateway).where(Gateway.slug == COUNCIL_SLUG)).first()
+        if gw is None:
+            if not wanted:
+                return
+            gw = Gateway(slug=COUNCIL_SLUG, name="Council models", strategy="least_busy", queue_timeout=60.0, max_retries=2)
+            s.add(gw)
+            s.flush()
+        have = {gm.public_name: gm for gm in s.exec(select(GatewayModel).where(GatewayModel.gateway_id == gw.id)).all()}
+        want = {model_name(i): i for i in wanted if s.get(Model, i)}
+        for name, gm in have.items():
+            if name not in want:
+                for mem in s.exec(select(Member).where(Member.gateway_model_id == gm.id)).all():
+                    s.delete(mem)
+                s.delete(gm)
+        for name, mid in want.items():
+            gm = have.get(name)
+            if gm is None:
+                gm = GatewayModel(gateway_id=gw.id, public_name=name)
+                s.add(gm)
+                s.flush()
+            mems = s.exec(select(Member).where(Member.gateway_model_id == gm.id)).all()
+            if len(mems) == 1 and mems[0].model_id == mid:
+                continue
+            for mem in mems:
+                s.delete(mem)
+            s.flush()
+            s.add(Member(gateway_model_id=gm.id, model_id=mid))
+        s.commit()
+
+
 def _body(model: str, messages: list, client_body: dict, cfg: dict, stream: bool = False) -> dict:
     b = {k: client_body[k] for k in PASS_PARAMS if client_body.get(k) is not None}
     cap = cfg.get("stage_max_tokens")
@@ -215,12 +282,12 @@ async def call(role: dict, messages: list, client_body: dict, cfg: dict, headers
     from . import proxy
     t0 = time.time()
     res = {"ok": False, "text": "", "error": None, "ms": 0, "usage": {"prompt_tokens": 0, "completion_tokens": 0}, "reasoning": ""}
-    gw = _gateway(role["gateway_id"])
+    gw, pm = resolve(role)
     if gw is None:
         res["error"] = "gateway no longer exists"
         return res
     try:
-        r = await asyncio.wait_for(proxy.dispatch(gw, None, "chat/completions", _body(role["model"], messages, client_body, cfg), None, headers_in),
+        r = await asyncio.wait_for(proxy.dispatch(gw, None, "chat/completions", _body(pm, messages, client_body, cfg), None, headers_in),
                                    cfg["stage_timeout_s"])
         data = json.loads(bytes(r.body))
         if r.status_code >= 400:
@@ -238,8 +305,24 @@ async def call(role: dict, messages: list, client_body: dict, cfg: dict, headers
     return res
 
 
+def role_label(role: dict, names: dict) -> str:
+    if "model_id" in role:
+        return names.get(("m", role["model_id"]), f"model {role['model_id']}")
+    return f"{names.get(role['gateway_id'], role['gateway_id'])}/{role['model']}"
+
+
+def _names() -> dict:
+    """gateway id -> name, and ('m', model id) -> 'endpoint/upstream id'."""
+    with session() as s:
+        names: dict = {g.id: g.name for g in s.exec(select(Gateway)).all()}
+        eps = {e.id: e.name for e in s.exec(select(Endpoint)).all()}
+        for m in s.exec(select(Model)).all():
+            names[("m", m.id)] = f"{eps.get(m.endpoint_id, '?')}/{m.upstream_id}"
+    return names
+
+
 def _label(role: dict, names: dict, seen: dict) -> str:
-    base = f"{names.get(role['gateway_id'], role['gateway_id'])}/{role['model']}"
+    base = role_label(role, names)
     seen[base] = seen.get(base, 0) + 1
     return base if seen[base] == 1 else f"{base} #{seen[base]}"
 
@@ -251,8 +334,7 @@ def _sum(*usages) -> dict:
 async def stages(cfg: dict, messages: list, client_body: dict, headers_in, progress=None) -> dict:
     """Stage 1 (answers) and stage 2 (anonymous peer review). Returns the state the chairman works from."""
     emit = progress or (lambda _t: None)
-    with session() as s:
-        names = {g.id: g.name for g in s.exec(select(Gateway)).all()}
+    names = _names()
     seen: dict = {}
     roles = [{**r, "idx": i, "label": _label(r, names, seen)} for i, r in enumerate(cfg["councillors"])]
     question = render_conversation(messages)
@@ -275,7 +357,7 @@ async def stages(cfg: dict, messages: list, client_body: dict, headers_in, progr
 
     if cfg["review_enabled"] and len(good) >= 2:
         if cfg["reviewers"] == "councillors":
-            reviewers = [{"idx": a["idx"], "label": a["label"], "gateway_id": a["gateway_id"], "model": a["model"]} for a in good]
+            reviewers = [{**{k: a[k] for k in ("gateway_id", "model", "model_id") if k in a}, "idx": a["idx"], "label": a["label"]} for a in good]
         else:
             reviewers = [{"idx": None, "label": _label(r, names, seen), **r} for r in cfg["reviewers"]]
         tpl = cfg.get("review_prompt") or REVIEW_PROMPT
@@ -453,7 +535,7 @@ async def run(gw: Gateway, gm, key, route: str, body: dict, headers_in, token):
         fallback = not chair["ok"]
         final = chair["text"] if chair["ok"] else state["good"][_top(state)]["text"]
         usage = _sum(chair["usage"], *[a["usage"] for a in state["answers"]], *[r["usage"] for r in state["reviews"]])
-        chair_info = {"label": f"{(_gateway(cfg['chairman']['gateway_id']) or Gateway(name='?')).name}/{cfg['chairman']['model']}",
+        chair_info = {"label": role_label(cfg["chairman"], _names()),
                       "ok": chair["ok"], "ms": chair["ms"], "error": chair["error"], "fallback": fallback, "usage": chair["usage"]}
         d = await finish(state, chair_info, final, usage, 200, None, False)
         out = {"id": rid, "object": "chat.completion", "created": int(time.time()), "model": gm.public_name,
@@ -480,9 +562,9 @@ async def _chairman_stream(rid, cfg, gm, st, body, headers_in, run_id, want_deta
     """Forward the chairman's own stream, then the optional details chunk. Falls back to the top answer if the chairman fails."""
     from . import proxy
     prior = _sum(*[a["usage"] for a in st["answers"]], *[r["usage"] for r in st["reviews"]])
-    gw_c = _gateway(cfg["chairman"]["gateway_id"])
-    label = f"{gw_c.name if gw_c else '?'}/{cfg['chairman']['model']}"
-    b = _body(cfg["chairman"]["model"], chairman_messages(cfg, st), body, cfg, stream=True)
+    gw_c, pm_c = resolve(cfg["chairman"])
+    label = role_label(cfg["chairman"], _names())
+    b = _body(pm_c, chairman_messages(cfg, st), body, cfg, stream=True)
     b["stream_options"] = {"include_usage": True}
     final: list[str] = []
     cusage = {"prompt_tokens": 0, "completion_tokens": 0}

@@ -35,7 +35,7 @@ class UnifiedIn(BaseModel):
 
 def _load():
     with session() as s:
-        gws = [g for g in s.exec(select(Gateway).order_by(Gateway.id)).all() if g.slug != unified.INTERNAL_SLUG]
+        gws = [g for g in s.exec(select(Gateway).order_by(Gateway.id)).all() if g.slug not in unified.HIDDEN_SLUGS]
         models: dict[int, list[str]] = {}
         for gm in s.exec(select(GatewayModel).order_by(GatewayModel.id)).all():
             models.setdefault(gm.gateway_id, []).append(gm.public_name)

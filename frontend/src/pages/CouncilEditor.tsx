@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Plus, Save, Trash2, Users } from "lucide-react";
 import { api } from "../api";
@@ -6,11 +6,17 @@ import { PageHeader } from "../components/ui";
 import KeysPanel from "../components/KeysPanel";
 import GatewayEditor from "./GatewayEditor";
 
-type Role = { gateway_id: number; model: string };
+type Role = { gateway_id: number; model: string } | { model_id: number };
 const REVIEW_HINT = "Placeholders: {question} {responses}. Keep the line “FINAL RANKING:” followed by “1. Response X” so rankings can be read.";
 const CHAIR_HINT = "Placeholders: {question} {responses} {ranking}.";
-const enc = (r: Role | null) => (r ? `${r.gateway_id}::${r.model}` : "");
-const dec = (v: string): Role | null => { const i = v.indexOf("::"); return i < 0 ? null : { gateway_id: +v.slice(0, i), model: v.slice(i + 2) }; };
+// a role is either an endpoint model ({model_id}) or the public model of a gateway ({gateway_id, model})
+const enc = (r: Role | null) => (!r ? "" : "model_id" in r ? `m::${r.model_id}` : `g::${r.gateway_id}::${r.model}`);
+const dec = (v: string): Role | null => {
+  if (v.startsWith("m::")) return { model_id: +v.slice(3) };
+  if (!v.startsWith("g::")) return null;
+  const rest = v.slice(3), i = rest.indexOf("::");
+  return { gateway_id: +rest.slice(0, i), model: rest.slice(i + 2) };
+};
 
 /** Router for /gateways/:id/edit: councils get their own editor. */
 export function EditRoute() {
@@ -21,13 +27,20 @@ export function EditRoute() {
   return kind === "council" ? <CouncilEditor /> : <GatewayEditor />;
 }
 
-function RolePicker({ value, onChange, gws, selfId, placeholder }: { value: Role | null; onChange: (r: Role | null) => void; gws: any[]; selfId?: number; placeholder: string }) {
+function RolePicker({ value, onChange, gws, eps, selfId, placeholder }: { value: Role | null; onChange: (r: Role | null) => void; gws: any[]; eps: any[]; selfId?: number; placeholder: string }) {
   return (
     <select className="input mono" value={enc(value)} onChange={(e) => onChange(dec(e.target.value))}>
       <option value="">{placeholder}</option>
+      {eps.map((e) => {
+        const ms = e.models.filter((m: any) => m.enabled !== false && !(m.capabilities || []).includes("embedding"));
+        return ms.length > 0 && (
+          <optgroup key={`e${e.id}`} label={`Model · ${e.name}`}>
+            {ms.map((m: any) => <option key={m.id} value={`m::${m.id}`}>{m.upstream_id}</option>)}
+          </optgroup>);
+      })}
       {gws.filter((g) => g.id !== selfId).map((g) => (
-        <optgroup key={g.id} label={`${g.name}${g.kind === "council" ? " (council)" : ""}`}>
-          {g.models.map((m: any) => <option key={m.id} value={`${g.id}::${m.public_name}`}>{m.public_name}</option>)}
+        <optgroup key={`g${g.id}`} label={`Gateway · ${g.name}${g.kind === "council" ? " (council)" : ""}`}>
+          {g.models.map((m: any) => <option key={m.id} value={`g::${g.id}::${m.public_name}`}>{m.public_name}</option>)}
         </optgroup>))}
     </select>
   );
@@ -37,6 +50,7 @@ export default function CouncilEditor() {
   const { id } = useParams();
   const nav = useNavigate();
   const [gws, setGws] = useState<any[]>([]);
+  const [eps, setEps] = useState<any[]>([]);
   const [err, setErr] = useState("");
   const [f, setF] = useState<any>({
     name: "", slug: "", model: "council",
@@ -47,6 +61,7 @@ export default function CouncilEditor() {
 
   useEffect(() => {
     api("/api/gateways").then(setGws);
+    api("/api/endpoints").then(setEps);
     api("/api/council/defaults").then((d) => setPrompts({ review: d.review_prompt, chairman: d.chairman_prompt })).catch(() => {});
     if (id) api(`/api/gateways/${id}`).then((g) => {
       const c = g.council || {};
@@ -65,8 +80,7 @@ export default function CouncilEditor() {
   const n = f.councillors.filter(Boolean).length;
   const calls = n + (f.review_enabled ? (f.separate ? f.reviewers.filter(Boolean).length : n) : 0) + 1;
   const warnRank = f.review_enabled && !f.separate && n === 2;
-  const gwOf = useMemo(() => Object.fromEntries(gws.map((g) => [g.id, g])), [gws]);
-
+  
   const save = async () => {
     setErr("");
     if (n < 2) return setErr("Pick at least two councillors.");
@@ -100,12 +114,12 @@ export default function CouncilEditor() {
         <div className="card card-pad">
           <div className="mb-1 flex items-center justify-between"><h3 className="flex items-center gap-2 text-base font-semibold"><Users size={17} /> Stage 1 · Councillors</h3>
             <button className="btn" disabled={f.councillors.length >= 8} onClick={() => set({ councillors: [...f.councillors, null] })}><Plus size={15} /> Add</button></div>
-          <p className="mb-3 text-sm text-[#8b91b5]">Each councillor answers the question on its own. Pick the public model of any gateway: its routing, failover and guardrails apply to the call.</p>
+          <p className="mb-3 text-sm text-[#8b91b5]">Each councillor answers the question on its own. Pick an endpoint model directly, or the public model of an existing gateway (its routing, failover, caching and guardrails then apply to the call).</p>
           <div className="space-y-2">
             {f.councillors.map((r: Role | null, i: number) => (
               <div key={i} className="flex items-center gap-2">
                 <span className="w-6 text-sm text-[#6b7196]">{i + 1}</span>
-                <div className="flex-1"><RolePicker value={r} onChange={(v) => setList("councillors", i, v)} gws={gws} selfId={id ? +id : undefined} placeholder="Choose a gateway model…" /></div>
+                <div className="flex-1"><RolePicker value={r} onChange={(v) => setList("councillors", i, v)} gws={gws} eps={eps} selfId={id ? +id : undefined} placeholder="Choose a gateway model…" /></div>
                 <button className="btn danger" onClick={() => set({ councillors: f.councillors.filter((_: any, j: number) => j !== i) })}><Trash2 size={15} /></button>
               </div>))}
           </div>
@@ -126,7 +140,7 @@ export default function CouncilEditor() {
               <div className="space-y-2">
                 {f.reviewers.map((r: Role | null, i: number) => (
                   <div key={i} className="flex items-center gap-2">
-                    <div className="flex-1"><RolePicker value={r} onChange={(v) => setList("reviewers", i, v)} gws={gws} selfId={id ? +id : undefined} placeholder="Choose a gateway model…" /></div>
+                    <div className="flex-1"><RolePicker value={r} onChange={(v) => setList("reviewers", i, v)} gws={gws} eps={eps} selfId={id ? +id : undefined} placeholder="Choose a gateway model…" /></div>
                     <button className="btn danger" onClick={() => set({ reviewers: f.reviewers.filter((_: any, j: number) => j !== i) })}><Trash2 size={15} /></button>
                   </div>))}
                 <button className="btn" disabled={f.reviewers.length >= 8} onClick={() => set({ reviewers: [...f.reviewers, null] })}><Plus size={15} /> Add reviewer</button>
@@ -138,7 +152,7 @@ export default function CouncilEditor() {
         <div className="card card-pad">
           <h3 className="mb-1 text-base font-semibold">Stage 3 · Chairman</h3>
           <p className="mb-3 text-sm text-[#8b91b5]">Gets every answer, the reviews and the ranking, and writes the one answer the client sees. If the chairman fails, the best-ranked answer is returned instead.</p>
-          <RolePicker value={f.chairman} onChange={(v) => set({ chairman: v })} gws={gws} selfId={id ? +id : undefined} placeholder="Choose the chairman model…" />
+          <RolePicker value={f.chairman} onChange={(v) => set({ chairman: v })} gws={gws} eps={eps} selfId={id ? +id : undefined} placeholder="Choose the chairman model…" />
         </div>
 
         <div className="card card-pad">
@@ -166,8 +180,8 @@ export default function CouncilEditor() {
           <div className="font-semibold">Cost and latency</div>
           <p className="mt-1">Each request makes <b>{calls}</b> model calls ({n} answers{f.review_enabled ? ` + ${f.separate ? f.reviewers.filter(Boolean).length : n} reviews` : ""} + 1 chairman), one stage after the other, so the reply takes roughly the sum of the slowest call in each stage.</p>
           <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-[#8b91b5]">
-            <li>Guardrails (PII, content filters) run on the gateways you pick, once per call. Put them on those gateways, not here.</li>
-            <li>Council calls skip the picked gateways' API-key checks. The council's own API keys protect the council.</li>
+            <li>Guardrails (PII, content filters) run on picked gateways, once per call. Endpoint models are sent the prompt as is.</li>
+            <li>Council calls skip the picked gateways' API-key checks. The council's own API keys protect the council. Endpoint models are called directly: pick a gateway instead when you want guardrails or caching on that role.</li>
             <li>Only chat is supported: no tools or JSON-mode.</li>
           </ul>
         </div>
