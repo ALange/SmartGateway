@@ -1,7 +1,7 @@
 import { NavLink, Route, Routes } from "react-router-dom";
 import { useEffect, useState } from "react";
 import Logo from "./components/Logo";
-import { Activity, LayoutGrid, LogOut, MessageSquare, Network, Plug, Minimize2, ListFilter, ScrollText, Settings as SettingsIcon } from "lucide-react";
+import { Activity, Users, LayoutGrid, LogOut, MessageSquare, Network, Plug, Minimize2, ListFilter, ScrollText, Settings as SettingsIcon } from "lucide-react";
 import Settings from "./pages/Settings";
 import Compression from "./pages/Compression";
 import Filters from "./pages/Filters";
@@ -23,6 +23,7 @@ const nav = [
   { to: "/", label: "Dashboard", icon: LayoutGrid, end: true },
   { to: "/endpoints", label: "Endpoints", icon: Plug },
   { to: "/gateways", label: "Smart Gateways", icon: Network },
+  { to: "/councils", label: "Council Gateways", icon: Users },
   { to: "/live", label: "Live", icon: Activity },
   { to: "/playground", label: "Playground", icon: MessageSquare },
   { to: "/compression", label: "Compression", icon: Minimize2 },
@@ -81,6 +82,7 @@ function Shell({ auth, onLogout }: { auth: { auth_required: boolean }; onLogout:
           <Route path="/endpoints" element={<Endpoints />} />
           <Route path="/gateways" element={<Gateways />} />
           <Route path="/gateways/new" element={<GatewayEditor />} />
+          <Route path="/councils" element={<Gateways kind="council" />} />
           <Route path="/councils/new" element={<CouncilEditor />} />
           <Route path="/gateways/:id/edit" element={<EditRoute />} />
           <Route path="/gateways/unified" element={<UnifiedLive />} />

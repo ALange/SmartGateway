@@ -327,8 +327,7 @@ def test_roles_can_be_endpoint_models_or_gateways_mixed(client, fake, team):
     hidden = next(g for g in client.get("/api/gateways?all=true").json() if g["slug"] == "__council__")
     assert [m["public_name"] for m in hidden["models"]] == [f"model-{mc}"]
     client.delete(f"/api/gateways/{gw['id']}")
-    hidden = next(g for g in client.get("/api/gateways?all=true").json() if g["slug"] == "__council__")
-    assert hidden["models"] == []
+    assert not [g for g in client.get("/api/gateways?all=true").json() if g["slug"] == "__council__"]   # nothing uses it: the hidden gateway is gone
 
 
 def test_model_roles_are_validated(client, fake, team):

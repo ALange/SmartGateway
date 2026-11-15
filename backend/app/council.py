@@ -231,9 +231,16 @@ def sync_models() -> None:
         for g in s.exec(select(Gateway).where(Gateway.kind == "council")).all():
             wanted |= model_ids(g.council)
         gw = s.exec(select(Gateway).where(Gateway.slug == COUNCIL_SLUG)).first()
+        if not wanted:   # nothing uses it any more (or never did): remove the hidden gateway altogether
+            if gw is not None:
+                for gm in s.exec(select(GatewayModel).where(GatewayModel.gateway_id == gw.id)).all():
+                    for mem in s.exec(select(Member).where(Member.gateway_model_id == gm.id)).all():
+                        s.delete(mem)
+                    s.delete(gm)
+                s.delete(gw)
+                s.commit()
+            return
         if gw is None:
-            if not wanted:
-                return
             gw = Gateway(slug=COUNCIL_SLUG, name="Council models", strategy="least_busy", queue_timeout=60.0, max_retries=2)
             s.add(gw)
             s.flush()

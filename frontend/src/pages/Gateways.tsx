@@ -6,7 +6,8 @@ import { CapChip, Empty, PageHeader } from "../components/ui";
 import TestGateway from "../components/TestGateway";
 import StressTest from "../components/StressTest";
 
-export default function Gateways() {
+export default function Gateways({ kind = "router" }: { kind?: "router" | "council" }) {
+  const council = kind === "council";
   const [gws, setGws] = useState<any[]>([]);
   const [testing, setTesting] = useState<any>(null);
   const [stressing, setStressing] = useState<any>(null);
@@ -15,6 +16,7 @@ export default function Gateways() {
   const nav = useNavigate();
   const load = () => { api("/api/gateways").then(setGws); api("/api/unified").then(setUni).catch(() => setUni(null)); };
   useEffect(() => { load(); }, []);
+  const shown = gws.filter((g) => (g.kind || "router") === kind);
   const [eps, setEps] = useState<any[]>([]);
   useEffect(() => { api("/api/endpoints").then(setEps).catch(() => {}); }, []);
   const gwName = (_g: any, r?: any) => {
@@ -25,7 +27,7 @@ export default function Gateways() {
   const del = async (g: any) => {
     if (!confirm(`Delete gateway "${g.name}"?`)) return;
     try { await api(`/api/gateways/${g.id}`, { method: "DELETE" }); }
-    catch (e: any) { if (!confirm(`${e.message}\n\nDelete it anyway? Those councils will fail until you pick another model.`)) return; await api(`/api/gateways/${g.id}?force=true`, { method: "DELETE" }); }
+    catch (e: any) { if (!confirm(`${e.message}\n\nDelete it anyway? Councils using it will fail until you pick another model.`)) return; await api(`/api/gateways/${g.id}?force=true`, { method: "DELETE" }); }
     load();
   };
 
@@ -37,11 +39,15 @@ export default function Gateways() {
 
   return (
     <div className="fadein">
-      <PageHeader title="Smart Gateways" sub="Each gateway is a single OpenAI-compatible endpoint that fans out to your upstream models."
-        actions={<><button className="btn" onClick={() => nav("/councils/new")} title="Several models answer, review each other and a chairman writes the final answer"><Users size={16} /> New council</button><button className="btn primary" onClick={() => nav("/gateways/new")}><Plus size={16} /> New gateway</button></>} />
-      {gws.length === 0 && <Empty>No gateways yet. Create one to combine endpoint models behind a single API.</Empty>}
+      <PageHeader title={council ? "Council Gateways" : "Smart Gateways"}
+        sub={council ? "A council asks several models, has them review each other anonymously, and a chairman writes the final answer."
+          : "Each gateway is a single OpenAI-compatible endpoint that fans out to your upstream models."}
+        actions={council
+          ? <button className="btn primary" onClick={() => nav("/councils/new")}><Plus size={16} /> New council</button>
+          : <button className="btn primary" onClick={() => nav("/gateways/new")}><Plus size={16} /> New gateway</button>} />
+      {shown.length === 0 && <Empty>{council ? "No councils yet. Create one to combine several models into a single, reviewed answer." : "No gateways yet. Create one to combine endpoint models behind a single API."}</Empty>}
       <div className="grid gap-5 xl:grid-cols-2">
-        {gws.map((g) => (
+        {shown.map((g) => (
           <div key={g.id} className="card card-pad">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -77,7 +83,7 @@ export default function Gateways() {
           </div>
         ))}
       </div>
-      {uni?.enabled && (
+      {!council && uni?.enabled && (
         <section className="mt-10">
           <div className="mb-4">
             <h2 className="text-lg font-semibold tracking-tight">Unified endpoint</h2>

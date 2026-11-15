@@ -95,7 +95,7 @@ export default function CouncilEditor() {
     const body = { name: f.name, slug: f.slug || null, kind: "council", council, max_retries: +f.max_retries, queue_timeout: +f.queue_timeout, models: [{ public_name: f.model.trim(), members: [] }] };
     try {
       const g = id ? await api(`/api/gateways/${id}`, { method: "PUT", json: body }) : await api("/api/gateways", { method: "POST", json: body });
-      nav(id ? "/gateways" : `/gateways/${g.id}/edit`);
+      nav(id ? "/councils" : `/gateways/${g.id}/edit`);
     } catch (e: any) { setErr(e.message); }
   };
 

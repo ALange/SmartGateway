@@ -38,7 +38,7 @@ export default function LiveAll() {
 
   const items = useMemo(() => {
     const internal = gws.find((g) => g.slug === "__unified__");
-    const list: any[] = gws.filter((g) => g.slug !== "__unified__").map((g) => ({
+    const list: any[] = gws.filter((g) => g.slug !== "__unified__" && g.slug !== "__council__" && g.kind !== "council").map((g) => ({
       key: `g${g.id}`, name: g.name, to: `/gateways/${g.id}`, url: gwUrl(g.slug), unified: false, ids: [g.id], flow: g,
     }));
     if (uni?.enabled) {

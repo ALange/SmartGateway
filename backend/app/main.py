@@ -28,7 +28,8 @@ async def lifespan(app: FastAPI):
     with session() as s:
         for e in s.exec(select(Endpoint)).all():
             health.status[e.id] = e.status
-    from . import settings_store
+    from . import council, settings_store
+    council.sync_models()   # drops the hidden council gateway when no council uses endpoint models
     from .router.cache import cache
     from .router.scheduler import scheduler
     await cache.reconfigure(settings_store.get_all())
