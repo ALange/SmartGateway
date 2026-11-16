@@ -6,7 +6,7 @@ import { CapChip, PageHeader } from "../components/ui";
 import KeysPanel from "../components/KeysPanel";
 import GuardrailsEditor from "../components/GuardrailsEditor";
 
-const blankModel = () => ({ public_name: "", strategy: "", sticky: false, system_prompt: "", max_tokens_cap: "", default_params: "", cache_enabled: false, cache_ttl: "", cache_any_temperature: false, cache_streaming: true, cache_replay_speed: "instant", compress_mode: "", guardrails: null as any, members: [] as any[] });
+const blankModel = () => ({ public_name: "", aliases_text: "", strategy: "", sticky: false, system_prompt: "", max_tokens_cap: "", default_params: "", cache_enabled: false, cache_ttl: "", cache_any_temperature: false, cache_streaming: true, cache_replay_speed: "instant", compress_mode: "", guardrails: null as any, members: [] as any[] });
 
 export default function GatewayEditor() {
   const { id } = useParams();
@@ -20,7 +20,7 @@ export default function GatewayEditor() {
     api("/api/endpoints").then(setEps);
     api("/api/cache/stats").then((c) => setCacheBackend(c.backend === "redis" ? (c.state === "error" ? "redis (down → memory)" : "redis") : "in-memory")).catch(() => {});
     if (id) api(`/api/gateways/${id}`).then((g) => setF({
-      ...g, models: g.models.map((m: any) => ({ ...m, strategy: m.strategy || "", system_prompt: m.system_prompt || "", max_tokens_cap: m.max_tokens_cap ?? "", cache_ttl: m.cache_ttl ?? "", compress_mode: m.compress_mode || "", guardrails: m.guardrails || null,
+      ...g, models: g.models.map((m: any) => ({ ...m, aliases_text: (m.aliases || []).join(", "), strategy: m.strategy || "", system_prompt: m.system_prompt || "", max_tokens_cap: m.max_tokens_cap ?? "", cache_ttl: m.cache_ttl ?? "", compress_mode: m.compress_mode || "", guardrails: m.guardrails || null,
         default_params: m.default_params && Object.keys(m.default_params).length ? JSON.stringify(m.default_params, null, 2) : "" })) }));
   }, [id]);
 
@@ -34,7 +34,7 @@ export default function GatewayEditor() {
     let models;
     try {
       models = f.models.map((m: any) => ({
-        public_name: m.public_name, strategy: m.strategy || null, sticky: !!m.sticky, system_prompt: m.system_prompt || null,
+        public_name: m.public_name, aliases: String(m.aliases_text || "").split(/[,\n]/).map((x: string) => x.trim()).filter(Boolean), strategy: m.strategy || null, sticky: !!m.sticky, system_prompt: m.system_prompt || null,
         max_tokens_cap: m.max_tokens_cap ? +m.max_tokens_cap : null,
         cache_enabled: !!m.cache_enabled, cache_streaming: !!m.cache_streaming, cache_replay_speed: m.cache_replay_speed || "instant", compress_mode: m.compress_mode || null, guardrails: m.guardrails || null, cache_ttl: m.cache_ttl ? +m.cache_ttl : null, cache_any_temperature: !!m.cache_any_temperature,
         default_params: m.default_params?.trim() ? JSON.parse(m.default_params) : {},
@@ -75,6 +75,8 @@ export default function GatewayEditor() {
               <div className="flex flex-wrap items-end gap-4">
                 <div className="min-w-[220px] flex-1"><label className="lbl">Public model name (visible via API)</label>
                   <input className="input mono" value={m.public_name} onChange={(e) => setModel(i, { public_name: e.target.value })} placeholder="smart-1" /></div>
+                <div className="min-w-[220px] flex-1"><label className="lbl">Also exposed as (optional, comma separated)</label>
+                  <input className="input mono" value={m.aliases_text || ""} onChange={(e) => setModel(i, { aliases_text: e.target.value })} placeholder="gpt-4o, claude-sonnet-4-5" title="Extra names clients can use for this same model. Each one is listed in /v1/models and answers with the name that was asked for." /></div>
                 <div className="min-w-[220px]"><label className="lbl">Strategy override</label>
                   <select className="input" value={m.strategy} onChange={(e) => setModel(i, { strategy: e.target.value })}><option value="">Gateway default</option>{Object.entries(STRATEGIES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></div>
                 <label className="btn cursor-pointer" title="Keep a conversation on the same upstream so its prompt cache is reused"><input type="checkbox" checked={m.sticky} onChange={(e) => setModel(i, { sticky: e.target.checked })} /> Sticky sessions</label>

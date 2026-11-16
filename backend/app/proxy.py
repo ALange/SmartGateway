@@ -196,15 +196,16 @@ def public_models(gw: Gateway, key=None) -> list[dict]:
     out = []
     with session() as s:
         for gm in s.exec(select(GatewayModel).where(GatewayModel.gateway_id == gw.id)).all():
-            if key and key.allowed_models and gm.public_name not in key.allowed_models:
-                continue
             caps: set = set()
             for c in load_members(gm.id):
                 caps |= c.caps
-            out.append({
-                "id": gm.public_name, "object": "model", "created": int(gw.created_at),
-                "owned_by": f"smartgateway/{gw.slug}", "capabilities": sorted(caps),
-            })
+            for n in model_names(gm):
+                if key and key.allowed_models and gm.public_name not in key.allowed_models and n not in key.allowed_models:
+                    continue
+                out.append({
+                    "id": n, "object": "model", "created": int(gw.created_at),
+                    "owned_by": f"smartgateway/{gw.slug}", "capabilities": sorted(caps),
+                })
     return out
 
 
@@ -285,6 +286,21 @@ def _spawn(coro) -> None:
 
 
 # ---------------------------------------------------------------- core dispatch
+def model_names(gm) -> list[str]:
+    """The public name followed by its aliases."""
+    return [gm.public_name, *(gm.aliases or [])]
+
+
+def match_model(gms, wanted: str):
+    """(GatewayModel, the exposed name that matched) - exact match on a name or alias first, then case-insensitive."""
+    for exact in (True, False):
+        for g in gms:
+            for n in model_names(g):
+                if n == wanted if exact else n.lower() == wanted.lower():
+                    return g, n
+    return None, None
+
+
 async def dispatch(gw: Gateway, key, route: str, body: dict, form_files, headers_in):
     """Route one parsed request. Returns a FastAPI Response (JSON or streaming)."""
     with session() as s:
@@ -292,16 +308,17 @@ async def dispatch(gw: Gateway, key, route: str, body: dict, form_files, headers
     if not gms:
         return err(404, "Gateway has no models configured", "not_found")
     wanted = str(body.get("model") or "").strip()
-    gm = next((g for g in gms if g.public_name == wanted), None) or next(
-        (g for g in gms if g.public_name.lower() == wanted.lower()), None
-    )
+    gm, shown = match_model(gms, wanted)
     if gm is None and not wanted and len(gms) == 1:
         gm = gms[0]
+        shown = gm.public_name
     if gm is None:
         return err(404, f"Model '{wanted}' not found on this gateway. Available: "
-                        + ", ".join(g.public_name for g in gms), "model_not_found")
-    if key is not None and key.allowed_models and gm.public_name not in key.allowed_models:
-        return err(403, f"This API key is not allowed to use model '{gm.public_name}'", "permission_denied")
+                        + ", ".join(n for g in gms for n in model_names(g)), "model_not_found")
+    if key is not None and key.allowed_models and gm.public_name not in key.allowed_models and shown not in key.allowed_models:
+        return err(403, f"This API key is not allowed to use model '{shown}'", "permission_denied")
+    if shown != gm.public_name:  # requested under an alias: answer, log and cache under that name
+        gm = gm.model_copy(update={"public_name": shown})
 
     # per-model defaults / system prompt / ceiling (pass-through unless configured)
     body = dict(body)

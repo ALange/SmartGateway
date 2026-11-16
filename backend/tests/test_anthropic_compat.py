@@ -191,3 +191,29 @@ def test_count_tokens_includes_system_and_tools(client):
     n1 = client.post(f"/api/admin-gw/{gw['slug']}/v1/messages/count_tokens",
                      json={**base, "system": "s" * 700, "tools": [{"name": "f", "description": "d" * 700, "input_schema": {"type": "object"}}]}).json()["input_tokens"]
     assert n1 > n0 + 300
+
+
+def test_model_aliases(client, fake):
+    with Session(db.engine) as s:
+        ep = Endpoint(name=f"al-ep-{time.time_ns()}", base_url="http://fake/v1", status="online")
+        s.add(ep); s.commit(); s.refresh(ep)
+        m = Model(endpoint_id=ep.id, upstream_id="up", capabilities=["chat"], max_slots=4, context_length=32000)
+        s.add(m); s.commit(); s.refresh(m)
+        ep_id, m_id = ep.id, m.id
+    health.status[ep_id] = "online"
+    body = {"name": f"al-{time.time_ns()}", "models": [{"public_name": "main", "aliases": ["gpt-4o", " claude-sonnet ", "GPT-4O", "main", ""], "members": [{"model_id": m_id}]}]}
+    res = client.post("/api/gateways", json=body)
+    assert res.status_code == 200, res.text
+    gw = res.json()
+    assert gw["models"][0]["aliases"] == ["gpt-4o", "claude-sonnet"]            # trimmed, de-duplicated, own name dropped
+    base = f"/api/admin-gw/{gw['slug']}/v1"
+    ids = [m["id"] for m in client.get(f"{base}/models").json()["data"]]
+    assert ids == ["main", "gpt-4o", "claude-sonnet"]
+    assert "alias_of" not in client.get(f"{base}/models").json()["data"][1]
+    for name, shown in (("main", "main"), ("gpt-4o", "gpt-4o"), ("CLAUDE-SONNET", "claude-sonnet")):
+        r = client.post(f"{base}/chat/completions", json={"model": name, "messages": [{"role": "user", "content": "hi"}]})
+        assert r.status_code == 200 and r.json()["model"] == shown
+    miss = client.post(f"{base}/chat/completions", json={"model": "nope", "messages": [{"role": "user", "content": "hi"}]})
+    assert miss.status_code == 404 and "gpt-4o" in miss.text
+    dup = {"name": "dup", "models": [{"public_name": "a", "aliases": ["b"], "members": []}, {"public_name": "b", "members": []}]}
+    assert client.post("/api/gateways", json=dup).status_code == 400

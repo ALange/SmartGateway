@@ -30,6 +30,7 @@ class MemberIn(BaseModel):
 
 class GatewayModelIn(BaseModel):
     public_name: str
+    aliases: list[str] = []  # additional exposed names for the same model
     strategy: Optional[str] = None
     sticky: bool = False
     system_prompt: Optional[str] = None
@@ -108,9 +109,18 @@ def validate(body: GatewayIn, s: Optional[Session] = None, self_id: Optional[int
             raise HTTPException(400, "Cache TTL must be between 1 second and 30 days")
     if body.strategy not in config.STRATEGIES:
         raise HTTPException(400, f"strategy must be one of {config.STRATEGIES}")
-    names = [m.public_name for m in body.models]
-    if len(set(n.lower() for n in names)) != len(names):
-        raise HTTPException(400, "Duplicate public model names")
+    for m in body.models:
+        own, seen = m.public_name.strip().lower(), {}
+        for a in m.aliases:
+            a = a.strip()
+            if len(a) > 200:
+                raise HTTPException(400, "Alias too long")
+            if a and a.lower() != own:
+                seen.setdefault(a.lower(), a)   # case-insensitive de-duplication, first spelling wins
+        m.aliases = list(seen.values())[:20]
+    names = [n for m in body.models for n in [m.public_name, *m.aliases]]
+    if len(set(n.strip().lower() for n in names)) != len(names):
+        raise HTTPException(400, "Duplicate model names (public names and aliases must be unique within a gateway)")
     for m in body.models:
         if not m.public_name.strip():
             raise HTTPException(400, "Public model name required")
@@ -128,7 +138,7 @@ def apply_models(gw: Gateway, body: GatewayIn, s: Session):
         missing = guardrails.library.missing_refs(s, gmi.guardrails)
         if missing:
             raise HTTPException(400, f"Guardrails of '{gmi.public_name}' reference unknown content filters: {', '.join(missing)}")
-        gm = GatewayModel(gateway_id=gw.id, public_name=gmi.public_name.strip(), strategy=gmi.strategy or None,
+        gm = GatewayModel(gateway_id=gw.id, public_name=gmi.public_name.strip(), aliases=gmi.aliases or None, strategy=gmi.strategy or None,
                           sticky=gmi.sticky, system_prompt=gmi.system_prompt or None,
                           max_tokens_cap=gmi.max_tokens_cap or None, default_params=gmi.default_params or {},
                           cache_enabled=gmi.cache_enabled, cache_ttl=gmi.cache_ttl or None,
