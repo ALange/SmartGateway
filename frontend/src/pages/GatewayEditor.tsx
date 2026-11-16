@@ -14,7 +14,7 @@ export default function GatewayEditor() {
   const [eps, setEps] = useState<any[]>([]);
   const [err, setErr] = useState("");
   const [cacheBackend, setCacheBackend] = useState("memory");
-  const [f, setF] = useState<any>({ name: "", slug: "", strategy: "least_busy", queue_timeout: 60, max_retries: 2, anthropic_compat: false, models: [blankModel()] });
+  const [f, setF] = useState<any>({ name: "", slug: "", strategy: "least_busy", queue_timeout: 60, max_retries: 2, models: [blankModel()] });
 
   useEffect(() => {
     api("/api/endpoints").then(setEps);
@@ -42,7 +42,7 @@ export default function GatewayEditor() {
           enabled: x.enabled ?? true, is_fallback: !!x.is_fallback, tier: +x.tier || 2 })),
       }));
     } catch (e: any) { setErr(`Default parameters must be valid JSON (${m_(e)})`); return; }
-    const body = { name: f.name, slug: f.slug || null, strategy: f.strategy, queue_timeout: +f.queue_timeout, max_retries: +f.max_retries, anthropic_compat: !!f.anthropic_compat, models };
+    const body = { name: f.name, slug: f.slug || null, strategy: f.strategy, queue_timeout: +f.queue_timeout, max_retries: +f.max_retries, models };
     try {
       const g = id ? await api(`/api/gateways/${id}`, { method: "PUT", json: body }) : await api("/api/gateways", { method: "POST", json: body });
       nav(`/gateways/${g.id}`);
@@ -52,7 +52,7 @@ export default function GatewayEditor() {
 
   return (
     <div className="fadein">
-      <PageHeader title={id ? "Edit gateway" : "New smart gateway"} sub="Combine upstream models into one OpenAI-compatible endpoint."
+      <PageHeader title={id ? "Edit gateway" : "New smart gateway"} sub="Combine upstream models into one endpoint that speaks both the OpenAI and the Anthropic API."
         actions={<><button className="btn" onClick={() => nav(-1)}>Cancel</button><button className="btn primary" onClick={save}><Save size={16} /> Save gateway</button></>} />
       {err && <div className="mb-4 rounded-md border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-300">{err}</div>}
 
@@ -63,11 +63,6 @@ export default function GatewayEditor() {
           <select className="input" value={f.strategy} onChange={(e) => setF({ ...f, strategy: e.target.value })}>{Object.entries(STRATEGIES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></div>
         <div><label className="lbl">Queue timeout (s) when all slots are busy</label><input type="number" className="input" value={f.queue_timeout} onChange={(e) => setF({ ...f, queue_timeout: e.target.value })} /></div>
         <div><label className="lbl">Retries on upstream failure</label><input type="number" className="input" value={f.max_retries} onChange={(e) => setF({ ...f, max_retries: e.target.value })} /></div>
-        <label className="flex items-start gap-3 md:col-span-2">
-          <input type="checkbox" className="mt-1" checked={!!f.anthropic_compat} onChange={(e) => setF({ ...f, anthropic_compat: e.target.checked })} />
-          <span><span className="text-sm font-medium">Fully Anthropic-compatible</span>
-            <span className="block text-xs text-[#6b7196]">Makes <span className="mono">/v1/messages</span> behave like the Anthropic API for Claude Code and the Anthropic SDK: thinking blocks, input tokens and ping events in streams, Anthropic-shaped <span className="mono">/v1/models</span> and errors, <span className="mono">request-id</span> header. Upstream models stay OpenAI-compatible, so <span className="mono">cache_control</span> is ignored. Everything else on this gateway is unchanged.</span></span>
-        </label>
       </div>
 
       <div className="space-y-5">

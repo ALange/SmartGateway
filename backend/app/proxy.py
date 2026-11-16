@@ -838,7 +838,7 @@ def _rid() -> str:
 
 async def adapt(resp, mode: str, public_model_hint: str, req_body: dict, strict: bool = False, input_tokens: int = 0):
     """Convert a chat-completions Response into Anthropic Messages / Responses API shape.
-    strict = the gateway's "Anthropic compatible" switch (Messages mode only)."""
+    strict = Anthropic client behaviour (Messages mode only; always on for /messages)."""
     mod = anth if mode == "anthropic" else resp_api
     strict = strict and mode == "anthropic"
     rid = _rid()
@@ -874,14 +874,20 @@ async def adapt(resp, mode: str, public_model_hint: str, req_body: dict, strict:
 
 async def handle(gw: Gateway, key, path: str, request: Request):
     route = path.strip("/")
-    strict = bool(getattr(gw, "anthropic_compat", False))
-    if strict:
-        return await _strict(await _handle(gw, key, route, request), request)
-    return await _handle(gw, key, route, request)
+    if is_anthropic(request, route):
+        return await _strict(await _handle(gw, key, route, request, True), request)
+    return await _handle(gw, key, route, request, False)
 
 
-async def _handle(gw: Gateway, key, route: str, request: Request):
-    strict = bool(getattr(gw, "anthropic_compat", False))
+def is_anthropic(request: Request, route: str = "") -> bool:
+    """Every gateway speaks both APIs. A request is treated as Anthropic when it targets a Messages route, carries the
+    `anthropic-version` header the SDKs always send, or authenticates with x-api-key alone."""
+    h = request.headers
+    return (route.strip("/").startswith("messages") or "anthropic-version" in h
+            or ("x-api-key" in h and "authorization" not in h))
+
+
+async def _handle(gw: Gateway, key, route: str, request: Request, strict: bool = False):
     if route == "models" and request.method == "GET":
         if strict:
             return anthropic_models(public_models(gw, key), request)
@@ -926,7 +932,7 @@ def anthropic_model(models: list[dict], mid: str):
 
 
 async def _strict(r, request: Request):
-    """Strict Anthropic gateways answer every error in Anthropic's shape, whatever the route, and always carry a request-id."""
+    """Anthropic clients get every error in Anthropic's shape, whatever the route, and a request-id."""
     if isinstance(r, dict):
         return JSONResponse(r, headers={"request-id": _rid()})
     if isinstance(r, JSONResponse) and r.status_code >= 400:
@@ -949,13 +955,13 @@ async def handle_parsed(gw: Gateway, key, route: str, body: dict, files, request
     """Serve one parsed POST. `alias` = the model name the client used on the unified endpoint (echoed back in responses)."""
     if route in ("messages", "responses"):
         mode = "anthropic" if route == "messages" else "responses"
-        strict = bool(gw is not None and gw.anthropic_compat and mode == "anthropic")
+        strict = mode == "anthropic"
         chat_body = anth.to_chat(body, strict) if mode == "anthropic" else resp_api.to_chat(body)
         hint = alias or body.get("model") or ""
         r = await dispatch(gw, key, "chat/completions", chat_body, None, request.headers)
         return await adapt(r, mode, hint, body, strict, estimate_tokens("chat/completions", chat_body)[0] if strict else 0)
     if route == "messages/count_tokens":
-        pt, _ = estimate_tokens("chat/completions", anth.to_chat(body, bool(gw is not None and gw.anthropic_compat)))
+        pt, _ = estimate_tokens("chat/completions", anth.to_chat(body, True))
         return {"input_tokens": pt}
     if route not in SUPPORTED:
         return err(404, f"Unsupported route: POST /v1/{route}", "not_found")
@@ -1005,11 +1011,7 @@ def alias_response(resp, alias: str):
 async def gw_route(slug: str, path: str, request: Request):
     gw, key, e = authenticate(slug, request)
     if e:
-        with session() as s:
-            g = s.exec(select(Gateway).where(Gateway.slug == slug)).first()
-        if g is not None and g.anthropic_compat:
-            return await _strict(e, request)
-        return await _compat_error(e, path)
+        return await _compat_error(e, path, request)
     return await handle(gw, key, path, request)
 
 
@@ -1017,11 +1019,13 @@ async def gw_route(slug: str, path: str, request: Request):
 async def v1_route(path: str, request: Request):
     gw, key, e = authenticate(None, request)
     if e:
-        return await _compat_error(e, path)
+        return await _compat_error(e, path, request)
     return await handle(gw, key, path, request)
 
 
-async def _compat_error(e: JSONResponse, path: str):
+async def _compat_error(e: JSONResponse, path: str, request: Optional[Request] = None):
+    if request is not None and is_anthropic(request, path):
+        return await _strict(e, request)
     if path.strip("/").startswith("messages"):
         j = json.loads(e.body)["error"]
         return JSONResponse(anth.error_body(j["message"], j["type"]), status_code=e.status_code)
@@ -1064,13 +1068,15 @@ def _unified_models(aliases: list[dict], request: Request, mode: Optional[str] =
 @router.api_route("/unified/v1/{path:path}", methods=["GET", "POST"])
 async def unified_route(path: str, request: Request):
     if not settings_store.get_cached().get("unified_enabled"):
-        return await _compat_error(err(404, "The unified endpoint is not enabled", "not_found"), path)
+        return await _compat_error(err(404, "The unified endpoint is not enabled", "not_found"), path, request)
     route = path.strip("/")
     mode = unified.access(_token_from(request))
     if mode == "denied":
-        return await _compat_error(err(401, "An API key is required for the unified endpoint", "invalid_api_key"), route)
+        return await _compat_error(err(401, "An API key is required for the unified endpoint", "invalid_api_key"), route, request)
     aliases = unified.exposed()
     if route == "models" and request.method == "GET":
+        if is_anthropic(request, route):
+            return await _strict(anthropic_models(_unified_models(aliases, request, mode), request), request)
         return {"object": "list", "data": _unified_models(aliases, request, mode)}
     if request.method != "POST":
         return err(404, f"Unsupported route: {request.method} /unified/v1/{route}", "not_found")
@@ -1086,7 +1092,7 @@ async def unified_route(path: str, request: Request):
         entry = unified.resolve(mine[0]["id"], aliases) if len(mine) == 1 else None
     if entry is None:
         avail = ", ".join(m["id"] for m in _unified_models(aliases, request, mode)) or "none"
-        return await _compat_error(err(404, f"Model '{wanted}' not found. Available: {avail}", "model_not_found"), route)
+        return await _compat_error(err(404, f"Model '{wanted}' not found. Available: {avail}", "model_not_found"), route, request)
     if mode == "all":
         gw, key = entry["gateway"], None   # the unified key replaces the gateway's own key (and its limits)
     else:
@@ -1094,6 +1100,6 @@ async def unified_route(path: str, request: Request):
         if not e and key is None and unified.keys():
             e = err(401, "Invalid API key", "invalid_api_key")
         if e:
-            return await _compat_error(e, route)
+            return await _compat_error(e, route, request)
     body = {**body, "model": entry["model"]}
     return await handle_parsed(gw, key, route, body, files, request, alias=entry["alias"])

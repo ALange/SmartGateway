@@ -54,7 +54,6 @@ class GatewayIn(BaseModel):
     max_retries: int = 2
     models: list[GatewayModelIn] = []
     kind: str = "router"          # router | council
-    anthropic_compat: bool = False  # fully Anthropic-compatible client API (thinking, usage, models shape, errors)
     council: Optional[dict] = None  # council config (see council.py); for a council, `models` holds just its public model's settings
 
 
@@ -86,8 +85,6 @@ def gw_out(gw: Gateway, s: Session) -> dict:
 def validate(body: GatewayIn, s: Optional[Session] = None, self_id: Optional[int] = None):
     if body.kind not in ("router", "council"):
         raise HTTPException(400, "kind must be router or council")
-    if body.anthropic_compat and body.kind == "council":
-        raise HTTPException(400, "Anthropic compatibility is not available for council gateways")
     if body.kind == "council":
         try:
             body.council = council.normalize(body.council)
@@ -168,8 +165,7 @@ def create_gateway(body: GatewayIn, s: Session = Depends(get_session)):
         raise HTTPException(400, f"Slug '{slug}' already in use")
     gw = Gateway(slug=slug, name=body.name, strategy=body.strategy,
                  queue_timeout=body.queue_timeout, max_retries=body.max_retries,
-                 kind=body.kind, council=body.council if body.kind == "council" else None,
-                 anthropic_compat=body.anthropic_compat)
+                 kind=body.kind, council=body.council if body.kind == "council" else None)
     s.add(gw)
     s.flush()
     apply_models(gw, body, s)
@@ -197,7 +193,6 @@ def update_gateway(gw_id: int, body: GatewayIn, s: Session = Depends(get_session
     gw.slug, gw.name = slug, body.name
     gw.strategy, gw.queue_timeout, gw.max_retries = body.strategy, body.queue_timeout, body.max_retries
     gw.council = body.council if gw.kind == "council" else None
-    gw.anthropic_compat = body.anthropic_compat
     s.add(gw)
     apply_models(gw, body, s)
     s.commit()

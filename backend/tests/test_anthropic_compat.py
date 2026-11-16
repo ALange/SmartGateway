@@ -112,7 +112,7 @@ def fake(monkeypatch):
     monkeypatch.setattr(proxy, "client", httpx.AsyncClient(transport=httpx.MockTransport(handler)))
 
 
-def make(client, compat):
+def make(client):
     with Session(db.engine) as s:
         ep = Endpoint(name=f"ac-ep-{time.time_ns()}", base_url="http://fake/v1", status="online")
         s.add(ep); s.commit(); s.refresh(ep)
@@ -120,10 +120,12 @@ def make(client, compat):
         s.add(m); s.commit(); s.refresh(m)
         ep_id, m_id = ep.id, m.id
     health.status[ep_id] = "online"
-    r = client.post("/api/gateways", json={"name": f"ac-{time.time_ns()}", "anthropic_compat": compat,
-                                           "models": [{"public_name": "claude-x", "members": [{"model_id": m_id}]}]})
+    r = client.post("/api/gateways", json={"name": f"ac-{time.time_ns()}", "models": [{"public_name": "claude-x", "members": [{"model_id": m_id}]}]})
     assert r.status_code == 200, r.text
     return r.json()
+
+
+ANTH = {"anthropic-version": "2023-06-01"}
 
 
 def msg(client, gw, content="hi", **kw):
@@ -131,55 +133,61 @@ def msg(client, gw, content="hi", **kw):
                        json={"model": "claude-x", "max_tokens": 50, "messages": [{"role": "user", "content": content}], **kw})
 
 
-def test_flag_is_stored_and_off_by_default(client):
-    on, off = make(client, True), make(client, False)
-    assert on["anthropic_compat"] is True and off["anthropic_compat"] is False
-    assert client.put(f"/api/gateways/{off['id']}", json={"name": off["name"], "anthropic_compat": True, "models": []}).json()["anthropic_compat"] is True
-    r = client.post("/api/gateways", json={"name": "c", "kind": "council", "anthropic_compat": True, "models": []})
-    assert r.status_code == 400 and "council" in r.text.lower()
+def chat(client, gw, content="hi", **kw):
+    return client.post(f"/api/admin-gw/{gw['slug']}/v1/chat/completions", json={"model": "claude-x", "messages": [{"role": "user", "content": content}], **kw})
 
 
-def test_messages_strict_vs_default(client, fake):
-    on, off = make(client, True), make(client, False)
-    a = msg(client, on)
+def test_one_gateway_speaks_both_apis(client, fake):
+    gw = make(client)
+    a = msg(client, gw)
     assert a.status_code == 200 and a.headers["request-id"].startswith("req_")
     j = a.json()
-    assert j["content"][0]["type"] == "thinking" and j["content"][1]["text"] == "Hello" and j["usage"]["cache_read_input_tokens"] == 0
-    b = msg(client, off).json()
-    assert b["content"] == [{"type": "text", "text": "Hello"}] and "cache_read_input_tokens" not in b["usage"]
-    assert "request-id" not in msg(client, off).headers
+    assert j["type"] == "message" and j["content"][0]["type"] == "thinking" and j["content"][1]["text"] == "Hello"
+    assert j["usage"]["cache_read_input_tokens"] == 0
+    o = chat(client, gw).json()  # the OpenAI side is untouched
+    assert o["choices"][0]["message"]["content"] == "Hello" and "request-id" not in chat(client, gw).headers
 
 
 def test_stream_through_gateway(client, fake):
-    on = make(client, True)
-    r = msg(client, on, stream=True)
+    gw = make(client)
+    r = msg(client, gw, stream=True)
     assert r.status_code == 200 and r.headers["request-id"]
     text = r.text
     assert "event: ping" in text and '"thinking_delta"' in text and '"text_delta"' in text and "event: message_stop" in text
     first = json.loads(text.split("event: message_start\ndata: ")[1].split("\n")[0])
     assert first["message"]["usage"]["input_tokens"] >= 0  # local estimate (the upstream usage arrives at the end)
+    o = chat(client, gw, stream=True).text  # OpenAI streaming is not rewritten
+    assert "event: ping" not in o and "choices" in o
 
 
-def test_models_shape_and_errors(client, fake):
-    on, off = make(client, True), make(client, False)
-    m = client.get(f"/api/admin-gw/{on['slug']}/v1/models").json()
+def test_models_shape_follows_the_client(client, fake):
+    gw = make(client)
+    base = f"/api/admin-gw/{gw['slug']}/v1"
+    m = client.get(f"{base}/models", headers=ANTH).json()
     assert m["data"][0]["type"] == "model" and m["data"][0]["id"] == "claude-x" and m["has_more"] is False and m["first_id"] == m["last_id"] == "claude-x"
-    one = client.get(f"/api/admin-gw/{on['slug']}/v1/models/claude-x").json()
+    assert client.get(f"{base}/models", headers={"x-api-key": "k"}).json()["data"][0]["type"] == "model"   # x-api-key alone = Anthropic client
+    assert client.get(f"{base}/models", headers={"x-api-key": "k", "Authorization": "Bearer k"}).json()["object"] == "list"
+    assert client.get(f"{base}/models").json()["object"] == "list"                                          # plain OpenAI client
+    one = client.get(f"{base}/models/claude-x", headers=ANTH).json()
     assert one["type"] == "model" and one["display_name"] == "claude-x"
-    miss = client.get(f"/api/admin-gw/{on['slug']}/v1/models/nope")
+    miss = client.get(f"{base}/models/nope", headers=ANTH)
     assert miss.status_code == 404 and miss.json()["error"]["type"] == "not_found_error"
-    assert client.get(f"/api/admin-gw/{off['slug']}/v1/models").json()["object"] == "list"
-    e = msg(client, on, "fail")
+
+
+def test_error_shape_follows_the_client(client, fake):
+    gw = make(client)
+    e = msg(client, gw, "fail")
     assert e.status_code >= 500 and e.json()["type"] == "error" and e.json()["error"]["type"] == "api_error" and e.json()["request_id"] == e.headers["request-id"]
-    # every route is Anthropic-shaped on a strict gateway
-    bad = client.post(f"/api/admin-gw/{on['slug']}/v1/nonsense", json={})
+    bad = client.post(f"/api/admin-gw/{gw['slug']}/v1/nonsense", json={}, headers=ANTH)
     assert bad.status_code == 404 and bad.json()["type"] == "error" and bad.json()["error"]["type"] == "not_found_error"
+    oa = chat(client, gw, "fail")  # an OpenAI client keeps the OpenAI error shape
+    assert oa.status_code >= 500 and "error" in oa.json() and oa.json().get("type") != "error"
 
 
 def test_count_tokens_includes_system_and_tools(client):
-    on = make(client, True)
+    gw = make(client)
     base = {"model": "claude-x", "messages": [{"role": "user", "content": "hi"}]}
-    n0 = client.post(f"/api/admin-gw/{on['slug']}/v1/messages/count_tokens", json=base).json()["input_tokens"]
-    n1 = client.post(f"/api/admin-gw/{on['slug']}/v1/messages/count_tokens",
+    n0 = client.post(f"/api/admin-gw/{gw['slug']}/v1/messages/count_tokens", json=base).json()["input_tokens"]
+    n1 = client.post(f"/api/admin-gw/{gw['slug']}/v1/messages/count_tokens",
                      json={**base, "system": "s" * 700, "tools": [{"name": "f", "description": "d" * 700, "input_schema": {"type": "object"}}]}).json()["input_tokens"]
     assert n1 > n0 + 300

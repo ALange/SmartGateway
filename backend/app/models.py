@@ -43,7 +43,7 @@ class Gateway(SQLModel, table=True):
     created_at: float = Field(default_factory=time.time)
     kind: str = "router"  # router | council (see council.py)
     council: Optional[dict] = Field(default=None, sa_column=Column(JSON))
-    anthropic_compat: bool = False  # strict Anthropic API behaviour for clients (compat/anthropic.py)
+    anthropic_compat: bool = False  # unused: every gateway speaks both APIs (kept so existing databases stay valid)
 
 
 class GatewayModel(SQLModel, table=True):

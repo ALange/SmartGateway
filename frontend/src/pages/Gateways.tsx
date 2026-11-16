@@ -52,7 +52,7 @@ export default function Gateways({ kind = "router" }: { kind?: "router" | "counc
             <div className="flex items-start justify-between gap-3">
               <div>
                 <Link to={g.kind === "council" ? `/gateways/${g.id}/edit` : `/gateways/${g.id}`} className="text-base font-semibold hover:text-[#9fb0ff]">{g.name}</Link>
-                <div className="mt-1 text-xs text-[#8b91b5]">{g.kind === "council" ? <><span className="chip mr-1" style={{ color: "#b79cf0", background: "#b79cf01f" }}>Council</span>{g.council?.councillors?.length || 0} councillors{g.council?.review_enabled === false ? "" : " · peer review"} · chairman {gwName(g, g.council?.chairman)}</> : <>{g.anthropic_compat && <span className="chip mr-1" style={{ color: "#d9a07a", background: "#d9a07a1f" }}>Anthropic</span>}{STRATEGIES[g.strategy]} · queue {g.queue_timeout}s</>} · {g.has_keys ? "API key required" : "open access"}</div>
+                <div className="mt-1 text-xs text-[#8b91b5]">{g.kind === "council" ? <><span className="chip mr-1" style={{ color: "#b79cf0", background: "#b79cf01f" }}>Council</span>{g.council?.councillors?.length || 0} councillors{g.council?.review_enabled === false ? "" : " · peer review"} · chairman {gwName(g, g.council?.chairman)}</> : <>{STRATEGIES[g.strategy]} · queue {g.queue_timeout}s</>} · {g.has_keys ? "API key required" : "open access"}</div>
               </div>
               <div className="flex flex-wrap justify-end gap-2">
                 <button className="btn whitespace-nowrap" onClick={() => setTesting(g)}><FlaskConical size={15} /> Test</button>
@@ -66,7 +66,6 @@ export default function Gateways({ kind = "router" }: { kind?: "router" | "counc
               <span className="truncate">{gwUrl(g.slug)}</span>
               <button onClick={() => navigator.clipboard?.writeText(gwUrl(g.slug))} title="Copy"><Copy size={14} /></button>
             </div>
-            {g.anthropic_compat && <div className="mono mt-2 text-[11px] text-[#8b91b5]">Claude Code: ANTHROPIC_BASE_URL={location.origin}/gw/{g.slug} · ANTHROPIC_AUTH_TOKEN=&lt;api key&gt; · ANTHROPIC_MODEL=&lt;public model&gt;</div>}
             <div className="mt-4 space-y-2">
               {g.models.map((m: any) => (
                 <div key={m.id} className="rounded-lg border border-white/5 bg-white/[0.02] p-3">
