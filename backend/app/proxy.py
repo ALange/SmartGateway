@@ -832,16 +832,24 @@ async def parse_body(request: Request):
         return None, None, err(400, "Request body must be a JSON object", "invalid_request_error")
 
 
-async def adapt(resp, mode: str, public_model_hint: str, req_body: dict):
-    """Convert a chat-completions Response into Anthropic Messages / Responses API shape."""
+def _rid() -> str:
+    return "req_" + uuid.uuid4().hex[:24]
+
+
+async def adapt(resp, mode: str, public_model_hint: str, req_body: dict, strict: bool = False, input_tokens: int = 0):
+    """Convert a chat-completions Response into Anthropic Messages / Responses API shape.
+    strict = the gateway's "Anthropic compatible" switch (Messages mode only)."""
     mod = anth if mode == "anthropic" else resp_api
+    strict = strict and mode == "anthropic"
+    rid = _rid()
     if isinstance(resp, StreamingResponse) and resp.status_code < 400:
         async def lines():
             async for chunk in resp.body_iterator:
                 for ln in (chunk.decode() if isinstance(chunk, bytes) else chunk).split("\n"):
                     yield ln
-        out = StreamingResponse(mod.stream_from_chat(lines(), public_model_hint), media_type="text/event-stream",
-                                headers={k: v for k, v in resp.headers.items() if k.lower().startswith("x-sg-")})
+        gen = anth.stream_from_chat(lines(), public_model_hint, strict, input_tokens) if strict else mod.stream_from_chat(lines(), public_model_hint)
+        out = StreamingResponse(gen, media_type="text/event-stream",
+                                headers={**{k: v for k, v in resp.headers.items() if k.lower().startswith("x-sg-")}, **({"request-id": rid} if strict else {})})
         out._sg_stream = True
         return out
     raw = resp.body if hasattr(resp, "body") else b""
@@ -850,19 +858,36 @@ async def adapt(resp, mode: str, public_model_hint: str, req_body: dict):
     except Exception:  # noqa: BLE001
         data = {}
     hdrs = {k: v for k, v in resp.headers.items() if k.lower().startswith("x-sg-")}
+    if strict:
+        hdrs["request-id"] = rid
     if resp.status_code >= 400:
         e = data.get("error") or {}
+        if strict:
+            return JSONResponse(anth.error_body(e.get("message") or "error", e.get("type") or "api_error", resp.status_code, rid),
+                                status_code=resp.status_code, headers=hdrs)
         return JSONResponse(mod.error_body(e.get("message") or "error", e.get("type") or "api_error"),
                             status_code=resp.status_code, headers=hdrs)
     if mode == "anthropic":
-        return JSONResponse(anth.from_chat(data, public_model_hint), headers=hdrs)
+        return JSONResponse(anth.from_chat(data, public_model_hint, strict), headers=hdrs)
     return JSONResponse(resp_api.from_chat(data, public_model_hint, req_body), headers=hdrs)
 
 
 async def handle(gw: Gateway, key, path: str, request: Request):
     route = path.strip("/")
+    strict = bool(getattr(gw, "anthropic_compat", False))
+    if strict:
+        return await _strict(await _handle(gw, key, route, request), request)
+    return await _handle(gw, key, route, request)
+
+
+async def _handle(gw: Gateway, key, route: str, request: Request):
+    strict = bool(getattr(gw, "anthropic_compat", False))
     if route == "models" and request.method == "GET":
+        if strict:
+            return anthropic_models(public_models(gw, key), request)
         return {"object": "list", "data": public_models(gw, key)}
+    if strict and request.method == "GET" and route.startswith("models/"):
+        return anthropic_model(public_models(gw, key), route[7:])
     if request.method != "POST":
         return err(404, f"Unsupported route: {request.method} /v1/{route}", "not_found")
     body, files, e = await parse_body(request)
@@ -871,16 +896,66 @@ async def handle(gw: Gateway, key, path: str, request: Request):
     return await handle_parsed(gw, key, route, body, files, request)
 
 
+def _anth_model(m: dict) -> dict:
+    return {"type": "model", "id": m["id"], "display_name": m["id"],
+            "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(m.get("created") or 0))}
+
+
+def anthropic_models(models: list[dict], request: Request) -> dict:
+    """Anthropic GET /v1/models: {data:[{type:"model",...}], has_more, first_id, last_id}, with after_id / before_id / limit paging."""
+    items = [_anth_model(m) for m in models]
+    q = request.query_params
+    try:
+        limit = max(1, min(int(q.get("limit", 20)), 1000))
+    except ValueError:
+        limit = 20
+    ids = [m["id"] for m in items]
+    if q.get("after_id") in ids:
+        items = items[ids.index(q["after_id"]) + 1:]
+    elif q.get("before_id") in ids:
+        items = items[:ids.index(q["before_id"])][-limit:]
+    page = items[:limit]
+    return {"data": page, "has_more": len(items) > limit, "first_id": page[0]["id"] if page else None, "last_id": page[-1]["id"] if page else None}
+
+
+def anthropic_model(models: list[dict], mid: str):
+    for m in models:
+        if m["id"] == mid:
+            return _anth_model(m)
+    return JSONResponse(anth.error_body(f"model: {mid}", "not_found", 404), status_code=404)
+
+
+async def _strict(r, request: Request):
+    """Strict Anthropic gateways answer every error in Anthropic's shape, whatever the route, and always carry a request-id."""
+    if isinstance(r, dict):
+        return JSONResponse(r, headers={"request-id": _rid()})
+    if isinstance(r, JSONResponse) and r.status_code >= 400:
+        try:
+            j = json.loads(r.body)
+        except Exception:  # noqa: BLE001
+            return r
+        if j.get("type") == "error":  # already Anthropic-shaped (from adapt)
+            return r
+        e = j.get("error") or {}
+        rid = _rid()
+        return JSONResponse(anth.error_body(e.get("message") or "error", e.get("type") or "api_error", r.status_code, rid),
+                            status_code=r.status_code, headers={"request-id": rid})
+    if isinstance(r, JSONResponse) and "request-id" not in r.headers:
+        r.headers["request-id"] = _rid()
+    return r
+
+
 async def handle_parsed(gw: Gateway, key, route: str, body: dict, files, request: Request, alias: Optional[str] = None):
     """Serve one parsed POST. `alias` = the model name the client used on the unified endpoint (echoed back in responses)."""
     if route in ("messages", "responses"):
         mode = "anthropic" if route == "messages" else "responses"
-        chat_body = anth.to_chat(body) if mode == "anthropic" else resp_api.to_chat(body)
+        strict = bool(gw is not None and gw.anthropic_compat and mode == "anthropic")
+        chat_body = anth.to_chat(body, strict) if mode == "anthropic" else resp_api.to_chat(body)
         hint = alias or body.get("model") or ""
         r = await dispatch(gw, key, "chat/completions", chat_body, None, request.headers)
-        return await adapt(r, mode, hint, body)
+        return await adapt(r, mode, hint, body, strict, estimate_tokens("chat/completions", chat_body)[0] if strict else 0)
     if route == "messages/count_tokens":
-        pt, _ = estimate_tokens("chat/completions", anth.to_chat(body))
+        pt, _ = estimate_tokens("chat/completions", anth.to_chat(body, bool(gw is not None and gw.anthropic_compat)))
         return {"input_tokens": pt}
     if route not in SUPPORTED:
         return err(404, f"Unsupported route: POST /v1/{route}", "not_found")
@@ -930,6 +1005,10 @@ def alias_response(resp, alias: str):
 async def gw_route(slug: str, path: str, request: Request):
     gw, key, e = authenticate(slug, request)
     if e:
+        with session() as s:
+            g = s.exec(select(Gateway).where(Gateway.slug == slug)).first()
+        if g is not None and g.anthropic_compat:
+            return await _strict(e, request)
         return await _compat_error(e, path)
     return await handle(gw, key, path, request)
 
