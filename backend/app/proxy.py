@@ -847,7 +847,7 @@ async def adapt(resp, mode: str, public_model_hint: str, req_body: dict, strict:
             async for chunk in resp.body_iterator:
                 for ln in (chunk.decode() if isinstance(chunk, bytes) else chunk).split("\n"):
                     yield ln
-        gen = anth.stream_from_chat(lines(), public_model_hint, strict, input_tokens) if strict else mod.stream_from_chat(lines(), public_model_hint)
+        gen = anth.stream_from_chat(lines(), public_model_hint, strict, input_tokens) if strict else (mod.stream_from_chat(lines(), public_model_hint) if mode == "anthropic" else mod.stream_from_chat(lines(), public_model_hint, req_body))
         out = StreamingResponse(gen, media_type="text/event-stream",
                                 headers={**{k: v for k, v in resp.headers.items() if k.lower().startswith("x-sg-")}, **({"request-id": rid} if strict else {})})
         out._sg_stream = True

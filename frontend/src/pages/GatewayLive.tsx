@@ -63,7 +63,16 @@ ${gw.has_keys ? `  -H "Authorization: Bearer <your-api-key>" \\\n` : ""}  -H "Co
 # Anthropic API too (Claude Code / Anthropic SDK)
 export ANTHROPIC_BASE_URL=${location.origin}/gw/${gw.slug}
 export ANTHROPIC_AUTH_TOKEN=${gw.has_keys ? "<your-api-key>" : "any-value"}
-export ANTHROPIC_MODEL=${gw.models[0]?.public_name || "model"}`}</pre>
+export ANTHROPIC_MODEL=${gw.models[0]?.public_name || "model"}
+
+# Codex CLI (~/.codex/config.toml) - uses the Responses API
+model = "${gw.models[0]?.public_name || "model"}"
+model_provider = "smartgateway"
+[model_providers.smartgateway]
+name = "SmartGateway"
+base_url = "${gwUrl(gw.slug)}"
+env_key = "SMARTGATEWAY_API_KEY"   # ${gw.has_keys ? "export it with your API key" : "any non-empty value"}
+wire_api = "responses"`}</pre>
           </div>
         </div>
       </div>
