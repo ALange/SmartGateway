@@ -44,6 +44,10 @@ def build_aliases(cfg: list[dict], gateways: dict[int, Gateway], models: dict[in
         default = sel.get("model") if sel.get("model") in names else names[0]
         base = unique((gw.name or "").strip() or gw.slug, gw)
         out.append({"alias": base, "gateway": gw, "model": default, "default": True})
+        for extra in sel.get("aliases") or []:   # additional names for the same (default) model
+            if extra and extra.lower() not in used:
+                used.add(extra.lower())
+                out.append({"alias": extra, "gateway": gw, "model": default, "default": False, "extra": True})
         if len(names) > 1:
             for m in names:
                 out.append({"alias": unique(f"{base}/{m}", gw), "gateway": gw, "model": m, "default": False})
@@ -53,6 +57,10 @@ def build_aliases(cfg: list[dict], gateways: dict[int, Gateway], models: dict[in
             if cand and cand.lower() not in used:
                 used.add(cand.lower())
                 out.append({"alias": cand, "gateway": d["gateway"], "model": d["model"], "default": False, "direct": True})
+                for extra in d.get("aliases") or []:
+                    if extra and extra.lower() not in used:
+                        used.add(extra.lower())
+                        out.append({"alias": extra, "gateway": d["gateway"], "model": d["model"], "default": False, "direct": True, "extra": True})
                 break
     return out
 
@@ -106,7 +114,7 @@ def exposed(settings: Optional[dict] = None) -> list[dict]:
         for gm in s.exec(select(GatewayModel).order_by(GatewayModel.id)).all():
             models.setdefault(gm.gateway_id, []).append(gm.public_name)
     internal = next((g for g in gws.values() if g.slug == INTERNAL_SLUG), None)
-    direct = [{"name": e["name"], "gateway": internal, "model": e["name"]} for e in direct_cfg
+    direct = [{"name": e["name"], "gateway": internal, "model": e["name"], "aliases": e.get("aliases") or []} for e in direct_cfg
               if internal is not None and e.get("name") in models.get(internal.id, [])]
     return build_aliases(cfg, gws, models, direct)
 

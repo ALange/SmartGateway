@@ -3,7 +3,9 @@ import { Link } from "react-router-dom";
 import { Box, Check, Copy, KeyRound, Layers, Loader2, Lock, Plus, Save, Trash2, X } from "lucide-react";
 import { api } from "../api";
 
-type Row = { id: number; name: string; slug: string; models: string[]; has_keys: boolean; exposed: boolean; model: string | null; names: string[] };
+type Row = { id: number; name: string; slug: string; models: string[]; has_keys: boolean; exposed: boolean; model: string | null; names: string[]; aliases: string[]; aliases_text?: string };
+
+const split = (t?: string) => String(t || "").split(/[,\n]/).map((x) => x.trim()).filter(Boolean);
 
 /** One OpenAI-compatible endpoint in front of several gateways; the model name is the gateway name. */
 export default function UnifiedEndpoint() {
@@ -14,14 +16,14 @@ export default function UnifiedEndpoint() {
   const [copied, setCopied] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
-  const [dModels, setDModels] = useState<{ model_id: number; name: string; upstream_id: string; endpoint: string }[]>([]);  // upstream models exposed directly
+  const [dModels, setDModels] = useState<{ model_id: number; name: string; upstream_id: string; endpoint: string; aliases?: string[]; aliases_text?: string }[]>([]);  // upstream models exposed directly
   const [allModels, setAllModels] = useState<any[]>([]);   // every model of every endpoint, for the picker
   const [pick, setPick] = useState("");
   const [keys, setKeys] = useState<any[]>([]);
   const [keyName, setKeyName] = useState("");
   const [fresh, setFresh] = useState<any>(null);  // a just-created key: its plaintext is shown once
   const [keyErr, setKeyErr] = useState("");
-  const apply = (v: any) => { setEnabled(v.enabled); setRows(v.gateways); setDModels(v.models || []); setKeys(v.keys || []); setDirty(false); };
+  const apply = (v: any) => { setEnabled(v.enabled); setRows(v.gateways.map((g: any) => ({ ...g, aliases_text: (g.aliases || []).join(", ") }))); setDModels((v.models || []).map((m: any) => ({ ...m, aliases_text: (m.aliases || []).join(", ") }))); setKeys(v.keys || []); setDirty(false); };
   useEffect(() => {
     api("/api/unified").then(apply).catch(() => {});
     api("/api/endpoints").then((eps: any[]) => setAllModels(eps.flatMap((e) => (e.models || []).filter((m: any) => m.enabled !== false).map((m: any) => ({ model_id: m.id, upstream_id: m.upstream_id, endpoint: e.name }))))).catch(() => {});
@@ -35,7 +37,7 @@ export default function UnifiedEndpoint() {
   const save = async () => {
     setBusy(true); setMsg(null);
     try {
-      const v = await api("/api/unified", { method: "PUT", json: { enabled, gateways: exposed.map((r) => ({ id: r.id, model: r.model })), models: dModels.map((m) => ({ model_id: m.model_id, name: m.name })) } });
+      const v = await api("/api/unified", { method: "PUT", json: { enabled, gateways: exposed.map((r) => ({ id: r.id, model: r.model, aliases: split(r.aliases_text) })), models: dModels.map((m) => ({ model_id: m.model_id, name: m.name, aliases: split(m.aliases_text) })) } });
       apply(v); setMsg({ ok: true, text: "Saved. Changes apply within a few seconds." });
     } catch (e: any) { setMsg({ ok: false, text: e.message }); }
     setBusy(false);
@@ -110,7 +112,9 @@ export default function UnifiedEndpoint() {
               {r.exposed && (
                 <div className="flex w-full flex-wrap items-center gap-1.5 pl-7 text-xs text-[#6b7196]">
                   model name{r.models.length > 1 ? "s" : ""}:
-                  {(dirty ? [r.name, ...(r.models.length > 1 ? r.models.map((m) => `${r.name}/${m}`) : [])] : r.names).map((n) => <span key={n} className="chip mono" style={{ color: "#9fb0e8", background: "#3b6fd822" }}>{n}</span>)}
+                  {(dirty ? [r.name, ...split(r.aliases_text), ...(r.models.length > 1 ? r.models.map((m) => `${r.name}/${m}`) : [])] : r.names).map((n) => <span key={n} className="chip mono" style={{ color: "#9fb0e8", background: "#3b6fd822" }}>{n}</span>)}
+                  <input className="input mono !w-auto min-w-[220px] flex-1 !py-1 text-xs" value={r.aliases_text || ""} placeholder="also exposed as (optional): gpt-4o, claude-sonnet"
+                    title="Extra names clients can use for this gateway's default model" onChange={(e) => patch(r.id, { aliases_text: e.target.value })} />
                 </div>
               )}
             </div>
@@ -126,6 +130,8 @@ export default function UnifiedEndpoint() {
           {dModels.map((m) => (
             <div key={m.model_id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3.5 py-2.5 text-sm">
               <input className="input mono !w-auto min-w-[200px] flex-1 !py-1" value={m.name} maxLength={120} onChange={(e) => { setDModels(dModels.map((x) => (x.model_id === m.model_id ? { ...x, name: e.target.value } : x))); setDirty(true); }} />
+              <input className="input mono !w-auto min-w-[200px] flex-1 !py-1 text-xs" value={m.aliases_text || ""} placeholder="also exposed as (optional): gpt-4o, claude-sonnet"
+                title="Extra names clients can use for this model" onChange={(e) => { setDModels(dModels.map((x) => (x.model_id === m.model_id ? { ...x, aliases_text: e.target.value } : x))); setDirty(true); }} />
               <span className="text-xs text-[#6b7196]"><span className="mono">{m.upstream_id}</span> @ {m.endpoint}</span>
               <button className="btn danger !px-2 !py-1" title="Remove" onClick={() => { setDModels(dModels.filter((x) => x.model_id !== m.model_id)); setDirty(true); }}><X size={14} /></button>
             </div>))}

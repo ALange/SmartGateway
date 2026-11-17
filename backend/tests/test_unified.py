@@ -144,3 +144,21 @@ def test_unified_api_keys(client):
     assert client.delete(f"/api/unified/keys/{made['id']}").status_code == 404
     assert ids(client.get("/unified/v1/models")) == ["KeyOpen"]                                    # last key removed -> open again
     client.put("/api/unified", json={"enabled": False, "gateways": []})
+
+
+def test_unified_aliases(client):
+    a = unified.build_aliases([{"gateway_id": 1, "aliases": ["gpt-4o", "fast"]}], {1: gw(1, "Fast Chat", "fast")}, {1: ["chat"]})
+    assert [(x["alias"], x["model"]) for x in a] == [("Fast Chat", "chat"), ("gpt-4o", "chat"), ("fast", "chat")]
+    g, _ = make_gateway(client, "Alias GW", ("a", "b"))
+    other, _ = make_gateway(client, "Alias Other")
+    ok = client.put("/api/unified", json={"enabled": True, "gateways": [{"id": g["id"], "model": "b", "aliases": [" gpt-4o ", "GPT-4O", ""]}]}).json()
+    assert ok["model_names"] == ["Alias GW", "gpt-4o", "Alias GW/a", "Alias GW/b"]
+    assert next(x for x in ok["gateways"] if x["id"] == g["id"])["aliases"] == ["gpt-4o"]
+    m = client.get("/unified/v1/models").json()["data"]
+    assert "gpt-4o" in [x["id"] for x in m]
+    # clashes are rejected, not silently renamed
+    bad = client.put("/api/unified", json={"gateways": [{"id": g["id"], "aliases": ["Alias Other"]}, {"id": other["id"]}]})
+    assert bad.status_code == 400 and "clashes" in bad.json()["detail"]
+    bad = client.put("/api/unified", json={"gateways": [{"id": g["id"], "aliases": ["same"]}, {"id": other["id"], "aliases": ["SAME"]}]})
+    assert bad.status_code == 400
+    client.put("/api/unified", json={"enabled": False, "gateways": []})

@@ -16,6 +16,7 @@ router = APIRouter(prefix="/api")
 class Selection(BaseModel):
     id: int
     model: Optional[str] = None  # default public model for the bare gateway name (None = the gateway's first model)
+    aliases: list[str] = []      # extra names clients can use for that default model
 
 
 class KeyIn(BaseModel):
@@ -25,6 +26,7 @@ class KeyIn(BaseModel):
 class ModelSel(BaseModel):
     model_id: int
     name: Optional[str] = None   # public name on the unified endpoint (None = the upstream model id)
+    aliases: list[str] = []      # extra names for the same model
 
 
 class UnifiedIn(BaseModel):
@@ -51,14 +53,26 @@ def _direct_models(cfg: dict, aliases: list[dict]) -> list[dict]:
         for e in cfg["unified_models"]:
             m = s.get(Model, e["model_id"])
             if m:
-                out.append({"model_id": m.id, "name": e["name"], "alias": names.get(e["name"]), "upstream_id": m.upstream_id, "endpoint": eps.get(m.endpoint_id, "?"),
+                out.append({"model_id": m.id, "name": e["name"], "aliases": e.get("aliases") or [], "alias": names.get(e["name"]), "upstream_id": m.upstream_id, "endpoint": eps.get(m.endpoint_id, "?"),
                             "capabilities": m.capabilities or [], "enabled": bool(m.enabled)})
     return out
+
+
+def _clean(aliases: list[str]) -> list[str]:
+    seen: dict = {}
+    for a in aliases:
+        a = a.strip()
+        if len(a) > 120:
+            raise HTTPException(400, "A model name must be 1-120 characters")
+        if a:
+            seen.setdefault(a.lower(), a)
+    return list(seen.values())[:20]
 
 
 def view() -> dict:
     cfg = st.get_all()
     picked = {g["gateway_id"]: g.get("model") for g in cfg["unified_gateways"]}
+    extra = {g["gateway_id"]: g.get("aliases") or [] for g in cfg["unified_gateways"]}
     gws, models = _load()
     aliases = unified.exposed(cfg)
     names: dict[int, list[str]] = {}
@@ -72,11 +86,45 @@ def view() -> dict:
             "has_keys": unified.has_keys(g.id), "exposed": g.id in picked,
             "model": picked.get(g.id) if picked.get(g.id) in models.get(g.id, []) else (models.get(g.id) or [None])[0],
             "names": names.get(g.id, []),  # model names clients can use for this gateway
+            "aliases": extra.get(g.id, []),
         } for g in gws],
         "model_names": [a["alias"] for a in aliases],
         "models": _direct_models(cfg, aliases),
         "keys": [{"id": k["id"], "name": k["name"], "prefix": k["prefix"], "created_at": k["created_at"]} for k in cfg["unified_keys"]],
     }
+
+
+def _check_unique(vals: dict):
+    """Every name a client can send must be unique: a typed alias that clashes with another name is rejected instead of being renamed."""
+    cfg = st.get_all()
+    gw_cfg = vals.get("unified_gateways", cfg["unified_gateways"])
+    models_cfg = vals.get("unified_models", cfg["unified_models"])
+    gws, models = _load()
+    taken: dict = {}
+
+    def claim(name: str, what: str):
+        k = name.lower()
+        if k in taken:
+            raise HTTPException(400, f"The name '{name}' ({what}) clashes with {taken[k]}")
+        taken[k] = what
+
+    by_id = {g.id: g for g in gws}
+    for sel in gw_cfg:
+        g = by_id.get(sel["gateway_id"])
+        if g is None or not models.get(g.id):
+            continue
+        base = (g.name or "").strip() or g.slug
+        claim(base, f"gateway '{g.name}'")
+        for m in models[g.id] if len(models[g.id]) > 1 else []:
+            claim(f"{base}/{m}", f"gateway '{g.name}'")
+    for e in models_cfg:
+        claim(e["name"], f"model '{e['name']}'")
+    for sel in gw_cfg:
+        for a in sel.get("aliases") or []:
+            claim(a, "an alias")
+    for e in models_cfg:
+        for a in e.get("aliases") or []:
+            claim(a, "an alias")
 
 
 @router.get("/unified")
@@ -101,7 +149,7 @@ def put_unified(body: UnifiedIn):
             if sel.model and sel.model not in models.get(sel.id, []):
                 raise HTTPException(400, f"Gateway '{by_id[sel.id].name}' has no model '{sel.model}'")
             seen.add(sel.id)
-            cfg.append({"gateway_id": sel.id, "model": sel.model or None})
+            cfg.append({"gateway_id": sel.id, "model": sel.model or None, "aliases": _clean(sel.aliases)})
         vals["unified_gateways"] = cfg
     if body.models is not None:
         entries, names = [], set()
@@ -116,10 +164,12 @@ def put_unified(body: UnifiedIn):
                 if name.lower() in names:
                     raise HTTPException(400, f"The name '{name}' is used twice")
                 names.add(name.lower())
-                entries.append({"model_id": m.id, "name": name})
-        unified.sync_models(entries)
+                entries.append({"model_id": m.id, "name": name, "aliases": _clean(sel.aliases)})
         vals["unified_models"] = entries
     if vals:
+        _check_unique(vals)
+        if "unified_models" in vals:
+            unified.sync_models(vals["unified_models"])
         st.update(vals)
     return view()
 
