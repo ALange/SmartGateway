@@ -9,6 +9,7 @@ const FIELDS: [string, string, string][] = [
   ["stress_retention_days", "Stress test runs", "stressrun"],
   ["audit_retention_days", "Audit log", "auditevent"],
   ["council_retention_days", "Stored council runs", "councilrun"],
+  ["mcp_retention_days", "MCP call log", "mcpcalllog"],
 ];
 const size = (b: number) => (b >= 1048576 ? (b / 1048576).toFixed(1) + " MB" : Math.round(b / 1024) + " KB");
 

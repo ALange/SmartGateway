@@ -9,7 +9,7 @@ from sqlmodel import Session, select
 from ..compression import pipeline
 from ..compression.insights import build_compression_response, build_context_response
 from ..db import get_session
-from ..models import CompressionEvent, RequestLog
+from ..models import CompressionEvent, McpCallLog, McpEndpoint, McpGateway, McpItem, RequestLog
 
 router = APIRouter(prefix="/api/insights")
 RANGES = {"1h": 3600, "24h": 86400, "7d": 7 * 86400, "30d": 30 * 86400}
@@ -106,6 +106,51 @@ async def performance(minutes: int = 60, s: Session = Depends(get_session)):
     out = build_performance(data, gateways, models, since=since, until=until, truncated=truncated)
     out["cache_live"] = await cache_facade.stats()
     return out
+
+
+@router.get("/mcp")
+def mcp_stats(minutes: int = 60, buckets: int = 24, s: Session = Depends(get_session)):
+    """MCP endpoint usage for the dashboard: totals, per endpoint, per gateway, top tools and a timeline."""
+    from ..mcp import registry
+    minutes = max(1, min(minutes, 43200))
+    until = time.time()
+    since = until - minutes * 60
+    rows = s.exec(select(McpCallLog).where(McpCallLog.ts >= since).order_by(McpCallLog.id.desc()).limit(50001)).all()
+    truncated = len(rows) > 50000
+    rows = rows[:50000]
+    eps = {e.id: e for e in s.exec(select(McpEndpoint)).all()}
+    gws = {g.id: g.name for g in s.exec(select(McpGateway)).all()}
+    counts: dict = {}
+    for kind, ep_id, n in s.exec(select(McpItem.kind, McpItem.endpoint_id, func.count()).group_by(McpItem.kind, McpItem.endpoint_id)).all():
+        counts.setdefault(ep_id, {})[kind] = n
+
+    def block(rs: list) -> dict:
+        ms = sorted(r.total_ms for r in rs)
+        return {"calls": len(rs), "errors": sum(1 for r in rs if not r.ok),
+                "avg_ms": int(sum(ms) / len(ms)) if ms else None, "p50_ms": ms[len(ms) // 2] if ms else None, "p95_ms": ms[min(len(ms) - 1, int(len(ms) * 0.95))] if ms else None}
+
+    by_ep: dict = {}
+    by_gw: dict = {}
+    by_tool: dict = {}
+    for r in rows:
+        by_ep.setdefault(r.endpoint_id, []).append(r)
+        by_gw.setdefault(r.gateway_id, []).append(r)
+        if r.method == "tools/call":
+            by_tool.setdefault((r.endpoint_id, r.name), []).append(r)
+    endpoints = [{"id": e.id, "name": e.name, "status": registry.status.get(e.id, e.status), "tools": counts.get(e.id, {}).get("tool", 0),
+                  "resources": counts.get(e.id, {}).get("resource", 0) + counts.get(e.id, {}).get("template", 0), "prompts": counts.get(e.id, {}).get("prompt", 0),
+                  **block(by_ep.get(e.id, []))} for e in eps.values()]
+    endpoints.sort(key=lambda e: -e["calls"])
+    gateways = sorted(({"id": g, "name": gws.get(g, f"#{g} (deleted)"), **block(rs)} for g, rs in by_gw.items()), key=lambda x: -x["calls"])
+    tools = sorted(({"name": n, "endpoint": eps[e].name if e in eps else "?", **block(rs)} for (e, n), rs in by_tool.items()), key=lambda x: -x["calls"])[:10]
+    step = (until - since) / buckets
+    line = [{"t": since + i * step, "calls": 0, "errors": 0} for i in range(buckets)]
+    for r in rows:
+        i = min(buckets - 1, int((r.ts - since) / step))
+        line[i]["calls"] += 1
+        line[i]["errors"] += 0 if r.ok else 1
+    return {"meta": {"since": since, "until": until, "truncated": truncated}, "totals": {**block(rows), "endpoints": len(eps), "online": sum(1 for e in endpoints if e["status"] == "online")},
+            "endpoints": endpoints, "gateways": gateways, "tools": tools, "timeline": line}
 
 
 @router.get("/live-series")

@@ -228,3 +228,74 @@ class CouncilRun(SQLModel, table=True):
     details: dict = Field(default_factory=dict, sa_column=Column(JSON))
     final: str = ""
     total_ms: int = 0
+
+
+# ---------------------------------------------------------------- MCP (external MCP servers combined into MCP gateways)
+class McpEndpoint(SQLModel, table=True):
+    """A remote MCP server (Streamable HTTP or legacy SSE) the gateway connects to."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    url: str
+    transport: str = "auto"  # auto | streamable_http | sse
+    headers_enc: Optional[str] = Field(default=None, sa_column=Column(EncryptedString))  # JSON dict of request headers (may hold tokens)
+    status: str = "unknown"  # online | offline | unknown
+    last_error: Optional[str] = None
+    last_checked: Optional[float] = None
+    server_info: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    protocol_version: Optional[str] = None
+    created_at: float = Field(default_factory=time.time)
+
+
+class McpItem(SQLModel, table=True):
+    """Discovery cache: one tool / resource / resource template / prompt offered by an MCP endpoint."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    endpoint_id: int = Field(foreign_key="mcpendpoint.id", index=True)
+    kind: str  # tool | resource | template | prompt
+    name: str  # tool/prompt name, resource uri or uri template
+    definition: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    seen_at: float = Field(default_factory=time.time)
+
+
+class McpGateway(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    slug: str = Field(index=True, unique=True)
+    name: str
+    description: Optional[str] = None
+    created_at: float = Field(default_factory=time.time)
+
+
+class McpGatewayMember(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    gateway_id: int = Field(foreign_key="mcpgateway.id", index=True)
+    endpoint_id: int = Field(foreign_key="mcpendpoint.id", index=True)
+    prefix: str  # namespace of this endpoint's items inside the gateway
+    enabled: bool = True
+    enabled_items: list = Field(default_factory=list, sa_column=Column(JSON))  # ["tool:name", "resource:uri", "prompt:name"]; items discovered later stay off
+
+
+class McpApiKey(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    gateway_id: int = Field(foreign_key="mcpgateway.id", index=True)
+    name: str = ""
+    key_hash: str = Field(index=True)
+    key_prefix: str = ""
+    enabled: bool = True
+    expires_at: Optional[float] = None
+    rpm_limit: Optional[int] = None
+    allowed_tools: Optional[list] = Field(default=None, sa_column=Column(JSON))  # exposed tool names; None = all
+    created_at: float = Field(default_factory=time.time)
+    last_used: Optional[float] = None
+
+
+class McpCallLog(SQLModel, table=True):
+    """One request served by an MCP gateway. Arguments and results are never stored."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    ts: float = Field(default_factory=time.time, index=True)
+    gateway_id: int = Field(index=True)
+    key_id: Optional[int] = None
+    endpoint_id: Optional[int] = None
+    method: str = ""
+    name: str = ""
+    ok: bool = True
+    total_ms: int = 0
+    error: Optional[str] = None

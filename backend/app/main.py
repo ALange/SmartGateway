@@ -16,9 +16,10 @@ from sqlmodel import select
 from pydantic import BaseModel
 
 from . import audit, config, crypto, proxy, retention
-from .api import compression as compression_api, content_filters as content_filters_api, endpoints, gateways, insights as insights_api, maintenance as maintenance_api, settings as settings_api, stats, stress as stress_api, unified as unified_api
+from .api import compression as compression_api, mcp_endpoints as mcp_endpoints_api, mcp_gateways as mcp_gateways_api, content_filters as content_filters_api, endpoints, gateways, insights as insights_api, maintenance as maintenance_api, settings as settings_api, stats, stress as stress_api, unified as unified_api
 from .db import engine, init_db, session
-from .models import Endpoint
+from .mcp import registry as mcp_registry, server as mcp_server
+from .models import Endpoint, McpEndpoint
 from .router import health
 
 
@@ -28,13 +29,15 @@ async def lifespan(app: FastAPI):
     with session() as s:
         for e in s.exec(select(Endpoint)).all():
             health.status[e.id] = e.status
+        for m in s.exec(select(McpEndpoint)).all():
+            mcp_registry.status[m.id] = m.status
     from . import council, settings_store
     council.sync_models()   # drops the hidden council gateway when no council uses endpoint models
     from .router.cache import cache
     from .router.scheduler import scheduler
     await cache.reconfigure(settings_store.get_all())
     tasks = [asyncio.create_task(health.loop()), asyncio.create_task(health.slot_sync_loop()),
-             asyncio.create_task(scheduler.run_ticker()), asyncio.create_task(retention.loop())]
+             asyncio.create_task(scheduler.run_ticker()), asyncio.create_task(retention.loop()), asyncio.create_task(mcp_registry.loop())]
     yield
     for t in tasks:
         t.cancel()
@@ -89,15 +92,15 @@ CORS_ORIGINS = [o.strip() for o in os.environ.get("SG_CORS_ORIGINS", "").split("
 @app.middleware("http")
 async def guard(request: Request, call_next):
     p = request.url.path
-    is_gateway = p.startswith(("/gw/", "/v1/", "/unified/"))
+    is_gateway = p.startswith(("/gw/", "/v1/", "/unified/", "/mcp/"))
     # CORS for the OpenAI-compatible surface only
     cors = {}
     if is_gateway and CORS_ORIGINS:
         origin = request.headers.get("origin", "")
         if "*" in CORS_ORIGINS or origin in CORS_ORIGINS:
             cors = {"Access-Control-Allow-Origin": "*" if "*" in CORS_ORIGINS else origin, "Vary": "Origin",
-                    "Access-Control-Allow-Headers": "authorization,content-type,x-api-key,anthropic-version,x-sg-require,x-sg-session,x-sg-cache",
-                    "Access-Control-Allow-Methods": "GET,POST,OPTIONS", "Access-Control-Expose-Headers": "X-SG-Upstream,X-SG-Endpoint,X-SG-Request-Id,X-SG-Cache"}
+                    "Access-Control-Allow-Headers": "authorization,content-type,x-api-key,anthropic-version,x-sg-require,x-sg-session,x-sg-cache,mcp-session-id,mcp-protocol-version,last-event-id,accept",
+                    "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS", "Access-Control-Expose-Headers": "X-SG-Upstream,X-SG-Endpoint,X-SG-Request-Id,X-SG-Cache,Mcp-Session-Id"}
         if request.method == "OPTIONS":
             return Response(status_code=204, headers=cors)
     # admin protection for the management API (UI shell stays public so the login page can load)
@@ -176,6 +179,9 @@ app.include_router(content_filters_api.router)
 app.include_router(insights_api.router)
 app.include_router(stress_api.router)
 app.include_router(unified_api.router)
+app.include_router(mcp_endpoints_api.router)
+app.include_router(mcp_gateways_api.router)
+app.include_router(mcp_server.router)
 app.include_router(proxy.router)
 
 if os.path.isdir(config.STATIC_DIR):
@@ -183,7 +189,7 @@ if os.path.isdir(config.STATIC_DIR):
 
     @app.get("/{full_path:path}")
     def spa(full_path: str):
-        if full_path.startswith(("api/", "gw/", "v1/", "unified/")):
+        if full_path.startswith(("api/", "gw/", "v1/", "unified/", "mcp/")):
             return JSONResponse({"error": "not found"}, status_code=404)
         f = os.path.join(config.STATIC_DIR, full_path)
         if full_path and os.path.isfile(f):

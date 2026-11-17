@@ -5,6 +5,7 @@ import { ArrowUpRight, Clock } from "lucide-react";
 import { api, PALETTE } from "../api";
 import { useLive } from "../live";
 import { fmt, ms, PageHeader, StatusDot } from "../components/ui";
+import McpPanel from "../components/McpPanel";
 import { CachePanel, ModelSpeedTable, PerformancePanel, SpeedChart } from "../components/PerfPanels";
 
 const RANGES: [string, number][] = [["15 min", 15], ["1 hour", 60], ["6 hours", 360], ["24 hours", 1440]];
@@ -17,9 +18,10 @@ export default function Dashboard() {
   const [gws, setGws] = useState<any[]>([]);
   const [comp, setComp] = useState<any>(null);
   const [perf, setPerf] = useState<any>(null);
+  const [mcp, setMcp] = useState<any>(null);
   const { snapshot } = useLive();
   useEffect(() => {
-    const load = () => { api(`/api/stats?minutes=${minutes}`).then(setS); api("/api/endpoints").then(setEps); api("/api/gateways").then(setGws); api(`/api/insights/performance?minutes=${minutes}`).then(setPerf).catch(() => {}); api(`/api/insights/compression?range=${minutes <= 60 ? "1h" : minutes <= 1440 ? "24h" : "7d"}`).then(setComp).catch(() => {}); };
+    const load = () => { api(`/api/stats?minutes=${minutes}`).then(setS); api("/api/endpoints").then(setEps); api("/api/gateways").then(setGws); api(`/api/insights/performance?minutes=${minutes}`).then(setPerf).catch(() => {}); api(`/api/insights/mcp?minutes=${minutes}`).then(setMcp).catch(() => {}); api(`/api/insights/compression?range=${minutes <= 60 ? "1h" : minutes <= 1440 ? "24h" : "7d"}`).then(setComp).catch(() => {}); };
     load(); const t = setInterval(load, 4000); return () => clearInterval(t);
   }, [minutes]);
   if (!s) return null;
@@ -98,6 +100,8 @@ export default function Dashboard() {
         <div className="mt-5 grid gap-5 xl:grid-cols-[1fr_2fr]"><CachePanel perf={perf} /><PerformancePanel perf={perf} /></div>
         <div className="mt-5 grid gap-5 xl:grid-cols-2"><SpeedChart perf={perf} /><ModelSpeedTable perf={perf} /></div>
       </>)}
+
+      {mcp && (mcp.totals.endpoints > 0 || mcp.totals.calls > 0) && <McpPanel d={mcp} />}
 
       <div className="mt-5 grid gap-5 xl:grid-cols-[1.3fr_1fr]">
         <div className="relative min-h-[220px] overflow-hidden rounded-lg border border-white/[0.08] p-6"

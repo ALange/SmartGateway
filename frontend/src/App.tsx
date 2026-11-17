@@ -1,7 +1,7 @@
 import { NavLink, Route, Routes } from "react-router-dom";
 import { useEffect, useState } from "react";
 import Logo from "./components/Logo";
-import { Activity, Users, LayoutGrid, LogOut, MessageSquare, Network, Plug, Minimize2, ListFilter, ScrollText, Settings as SettingsIcon } from "lucide-react";
+import { Activity, Users, LayoutGrid, LogOut, MessageSquare, Network, Plug, Plug2, Boxes, Minimize2, ListFilter, ScrollText, Settings as SettingsIcon } from "lucide-react";
 import Settings from "./pages/Settings";
 import Compression from "./pages/Compression";
 import Filters from "./pages/Filters";
@@ -18,12 +18,17 @@ import GatewayLive from "./pages/GatewayLive";
 import UnifiedLive from "./pages/UnifiedLive";
 import LiveAll from "./pages/LiveAll";
 import Logs from "./pages/Logs";
+import McpEndpoints from "./pages/McpEndpoints";
+import McpGateways from "./pages/McpGateways";
+import McpGatewayEditor from "./pages/McpGatewayEditor";
 
 const nav = [
   { to: "/", label: "Dashboard", icon: LayoutGrid, end: true },
   { to: "/endpoints", label: "Endpoints", icon: Plug },
   { to: "/gateways", label: "Smart Gateways", icon: Network },
   { to: "/councils", label: "Council Gateways", icon: Users },
+  { to: "/mcp-endpoints", label: "MCP Endpoints", icon: Plug2 },
+  { to: "/mcp-gateways", label: "MCP Gateways", icon: Boxes },
   { to: "/live", label: "Live", icon: Activity },
   { to: "/playground", label: "Playground", icon: MessageSquare },
   { to: "/compression", label: "Compression", icon: Minimize2 },
@@ -87,6 +92,10 @@ function Shell({ auth, onLogout }: { auth: { auth_required: boolean }; onLogout:
           <Route path="/gateways/:id/edit" element={<EditRoute />} />
           <Route path="/gateways/unified" element={<UnifiedLive />} />
           <Route path="/gateways/:id" element={<GatewayLive />} />
+          <Route path="/mcp-endpoints" element={<McpEndpoints />} />
+          <Route path="/mcp-gateways" element={<McpGateways />} />
+          <Route path="/mcp-gateways/new" element={<McpGatewayEditor />} />
+          <Route path="/mcp-gateways/:id/edit" element={<McpGatewayEditor />} />
           <Route path="/live" element={<LiveAll />} />
           <Route path="/playground" element={<Playground />} />
           <Route path="/logs" element={<Logs />} />
