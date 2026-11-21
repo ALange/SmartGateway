@@ -1,43 +1,97 @@
 # SmartGateway
 
-Smart router for OpenAI-compatible LLM endpoints, with a web UI.
+**One front door for all your LLMs and MCP servers.** SmartGateway sits in front of any number of OpenAI-compatible servers
+(llama.cpp, vLLM, Ollama, hosted APIs, ...) and gives your tools a single, stable URL, with smart routing, per-client keys, caching,
+context compression and live observability. It also combines remote **MCP servers** into one MCP endpoint.
 
-- **Endpoints** – add any OpenAI-compatible server (optional API key, stored encrypted). Models are discovered via `/models`;
-  capabilities (`chat, reasoning, vision, audio, video, ocr, embedding, tools, tts, image_gen`), context window and slot count are
-  detected from listing metadata, llama.cpp `/props`, Ollama `/api/show`, name heuristics and optional active probes. Everything is editable.
-- **Smart gateways** – combine upstream models behind one URL `http://HOST:PORT/gw/<slug>/v1` with your own public model names.
-  Surfaces: `chat/completions`, `completions`, `embeddings`, `audio/transcriptions|speech`, `images/generations|edits`, `models`,
-  plus **Anthropic `/v1/messages`** and **OpenAI `/v1/responses`** (translated onto the same routing pipeline).
-- **Routing** – capability matching from the request (image → vision, audio, tools, reasoning params, `X-SG-Require` header), **context-fit**
-  (prompt size vs each model's window, with retry on overflow), slot-aware scheduling with a fair FIFO queue, **live slot sync**
-  (llama.cpp `/slots`, vLLM `/metrics`) so other clients' load counts, strategies: least busy, weighted round-robin, priority failover,
-  fastest, random, **tiered** (small→large by prompt complexity), **fallback members**, **sticky sessions** (`X-SG-Session` / `user`),
-  retries and circuit breaker.
-- **Multi-tenant** – per-gateway **API keys** (hashed, shown once) with RPM/TPM limits, concurrency cap, daily/monthly token quotas,
-  allowed models and expiry; admin **login** (cookie session); upstream keys encrypted at rest (Fernet).
-- **Request shaping** – optional per-model system prompt, default parameters and max-tokens ceiling (pass-through unless set),
-  exact-match response cache (per model, optional Redis backend — see below).
-- **UI** – dashboard, live animated flow graph per gateway, **Playground** (streaming chat, images, reasoning, routing info),
-  gateway **Test** dialog, request log.
+[![Dashboard](docs/screenshots/dashboard.png)](docs/screenshots/dashboard.png)
 
-## Run
+## Highlights
+
+- **Speaks every dialect.** Each gateway answers the OpenAI API (`chat/completions`, `embeddings`, `audio`, `images`, ...), the
+  **Anthropic Messages API** (`/v1/messages`, works with Claude Code) and the **OpenAI Responses API** (works with Codex), detected
+  automatically per request. No switches to flip.
+- **Smart routing.** Capability matching (vision, audio, tools, reasoning), context-fit, slot-aware FIFO queueing, live slot sync,
+  tiered small-to-large routing, fallbacks, sticky sessions, retries and circuit breaker.
+- **Your names, your rules.** Expose models under your own public names, plus optional extra aliases (`gpt-4o`, `claude-sonnet`, ...)
+  so existing clients work unchanged. A unified endpoint serves several gateways from one URL.
+- **MCP Endpoints and MCP Gateways.** Connect external MCP servers, then publish a curated mix of their tools, resources and prompts as
+  one MCP server with its own keys.
+- **Multi-tenant and safe.** Per-gateway API keys (hashed, shown once) with RPM/TPM limits, quotas and expiry; admin login;
+  upstream keys encrypted at rest.
+- **Cheaper and faster.** Response cache (in-memory or Redis, streaming aware) and context compression for long agent sessions.
+- **Observability.** Dashboard, live animated flow graph, request log, speed per gateway/model (generation, prompt processing, first
+  token, cache hit rate), stress test, MCP call statistics.
+
+| Smart gateways | MCP gateways |
+|---|---|
+| [![Smart gateways](docs/screenshots/gateways.png)](docs/screenshots/gateways.png) | [![MCP gateways](docs/screenshots/mcp-gateways.png)](docs/screenshots/mcp-gateways.png) |
+
+## Quick start
+
 ```bash
-docker compose up -d --build            # UI + API on http://localhost:8080  (SG_PORT=9090 to change)
-docker compose --profile demo up -d     # plus 3 mock upstreams: http://mock-a:9000/v1, mock-b, mock-c
-tools/load.sh http://localhost:8080 30  # demo traffic against a gateway with slug "main"
+git clone https://github.com/ALange/SmartGateway.git && cd SmartGateway
+SG_ADMIN_PASSWORD=change-me docker compose up -d --build     # UI + API on http://localhost:8080
 ```
-Environment: `SG_ADMIN_PASSWORD` (+ `SG_ADMIN_USER`, default `admin`) enables login · `SG_SECRET_KEY` (otherwise a key file is generated
-in the data volume — back it up together with the database) · `SG_CORS_ORIGINS` (browser clients of `/gw` and `/v1`) ·
-`SG_SSL_CERT`/`SG_SSL_KEY` (serve HTTPS directly; otherwise put a reverse proxy in front) · `SG_DEFAULT_SLOTS`, `SG_HEALTH_INTERVAL`,
-`SG_FALLBACK_GRACE`. Data lives in the `sg-data` volume (SQLite); schema upgrades are applied automatically on start.
 
-Back up the data volume as a whole: the database is only usable together with `secret.key` (or your `SG_SECRET_KEY`); without it stored upstream keys must be re-entered.
+1. **Endpoints** -> add your upstream server (URL, optional key). Models and capabilities are discovered; enable the ones you want.
+2. **Smart Gateways** -> create a gateway, add models under public names. Point clients at `http://HOST:8080/gw/<slug>/v1`.
+3. Optional: create API keys on the gateway, add **MCP Endpoints** and combine them in an **MCP Gateway**.
 
-Notes: gateway API keys cannot be recovered after creation (create a new one). Tiered routing and the complexity score are heuristics.
-The context estimate is ~3.5 characters per token.
+Try it without real models: `docker compose --profile demo up -d` starts three mock upstreams (`http://mock-a:9000/v1`, `mock-b`, `mock-c`),
+and `tools/load.sh http://localhost:8080 30` generates traffic against a gateway with slug `main`.
 
-## Unified endpoint
+## Connect your tools
 
+| Client | Setup |
+|---|---|
+| OpenAI SDKs, curl, Open WebUI, ... | base URL `http://HOST:8080/gw/<slug>/v1`, API key = a gateway key (or anything if the gateway is open) |
+| **Claude Code** | `ANTHROPIC_BASE_URL=http://HOST:8080/gw/<slug>` and `ANTHROPIC_AUTH_TOKEN=<key>`; the gateway's **Live** page shows ready-made lines |
+| **Codex** | custom provider with `base_url = "http://HOST:8080/gw/<slug>/v1"`, `wire_api = "responses"` (snippet on the **Live** page) |
+| **MCP clients** | `claude mcp add --transport http dev http://HOST:8080/mcp/<slug> --header "Authorization: Bearer <key>"` (more on the MCP gateway card) |
+
+Anthropic and Responses requests are translated onto the same routing pipeline, so routing, caching, limits and logs apply to them too.
+Upstreams are OpenAI-compatible; limits of the translation (for example `web_search` tools and `previous_response_id`) are listed under
+[Compatibility notes](#compatibility-notes).
+
+## Configuration
+
+`SG_ADMIN_PASSWORD` (+ `SG_ADMIN_USER`, default `admin`) enables login · `SG_PORT` · `SG_SECRET_KEY` (otherwise a key file is generated
+in the data volume, back it up together with the database) · `SG_CORS_ORIGINS` (browser clients) · `SG_SSL_CERT`/`SG_SSL_KEY` (HTTPS, or use
+a reverse proxy) · `SG_DEFAULT_SLOTS` · `SG_HEALTH_INTERVAL` · `SG_FALLBACK_GRACE` · `SG_REDIS_URL`. Data lives in the `sg-data` volume
+(SQLite); schema upgrades are applied automatically on start. Back up the data volume as a whole: without `secret.key` stored upstream keys
+must be re-entered. Gateway API keys cannot be recovered after creation.
+
+## Feature guide
+
+### Endpoints and models
+Add any OpenAI-compatible server. Models are discovered via `/models`; capabilities (`chat, reasoning, vision, audio, video, ocr,
+embedding, tools, tts, image_gen`), context window and slot count come from listing metadata, llama.cpp `/props`, Ollama `/api/show`, name
+heuristics and optional active probes, and everything is editable. Newly discovered models start disabled until you enable them.
+
+### Smart gateways
+Combine upstream models behind one URL with your own public model names. Strategies: least busy, weighted round-robin, priority failover,
+fastest, random, **tiered** (by prompt complexity), plus fallback members and sticky sessions (`X-SG-Session` / `user`). Per model you can
+set a system prompt, default parameters, a max-tokens ceiling, caching and compression. Requests can steer routing with `X-SG-Require`.
+
+**Extra names (aliases):** a public model can have optional additional names. Clients may request any of them; the request is logged,
+cached and answered under the name used, and `/models` lists each one. Keys' allowed-model lists accept the canonical name or an alias.
+
+### MCP Endpoints and MCP Gateways
+**MCP Endpoints** connects remote MCP servers (Streamable HTTP, with legacy SSE fallback). Headers such as `Authorization` are stored
+encrypted, and discovery, health checks and re-scans run automatically. **MCP Gateways** combines endpoints into one server at
+`/mcp/<slug>`:
+
+- tools and prompts are namespaced `prefix__name`, resources `mcp://prefix/<original uri>`, so servers never collide;
+- per endpoint you tick which items are exposed (new upstream items stay off until you enable them);
+- optional MCP API keys with rate limit, expiry and allowed tools; a gateway with no keys is open;
+- a built-in **Test** dialog, recent calls, and dashboard statistics (calls, errors, latency, top tools). Only metadata is logged, never
+  arguments or results; retention is configurable in Settings.
+
+Not supported: stdio servers, OAuth login flows to upstream servers (use static headers/tokens), sampling, subscriptions and
+`listChanged` notifications.
+
+### Unified endpoint
 Settings -> **Unified endpoint** exposes several gateways through one OpenAI-compatible URL, `/unified/v1`
 (`chat/completions`, `completions`, `embeddings`, `models`, plus the Anthropic `messages` and `responses` surfaces).
 You choose which gateways are exposed; the `model` a client sends is the **gateway name** (case-insensitive, the slug also works).
@@ -49,9 +103,9 @@ A unified key works for all exposed gateways without their own keys (it carries 
 works for that gateway only. Keys are stored hashed and the plaintext is shown once, at creation.
 `GET /unified/v1/models` lists only what the caller may use, so protected gateways are not revealed to anonymous callers.
 Routing, caching, compression, limits, quotas and logs all happen in the owning gateway, and responses report the gateway name as `model`.
-It is off by default; the existing `/gw/<slug>/v1` and `/v1` URLs are unchanged.
+Each exposed gateway can also have optional extra names (aliases), rejected if they clash with another name. It is off by default; the existing `/gw/<slug>/v1` and `/v1` URLs are unchanged.
 
-## OpenCode Zen and OpenCode Go endpoints
+### OpenCode Zen and OpenCode Go endpoints
 
 Endpoints -> Add endpoint -> choose **OpenCode Zen** (pay-as-you-go, `https://opencode.ai/inference/v1`) or **OpenCode Go**
 (subscription, `https://opencode.ai/inference/go/v1`) and paste your API key from the OpenCode console.
@@ -66,7 +120,7 @@ Endpoints -> Add endpoint -> choose **OpenCode Zen** (pay-as-you-go, `https://op
   Stress tests on these endpoints spend real credits or allowance, and the dialog warns about it.
 - A manually typed `opencode.ai/inference` or `opencode.ai/zen` URL is recognised automatically.
 
-## Deploying on another host
+### Deploying on another host
 
 `deploy/` holds a standalone compose file (no source needed on the target):
 
@@ -78,7 +132,7 @@ cp .env.example .env                    # set SG_ADMIN_PASSWORD, SG_PORT, ...
 docker compose up -d                    # add --profile redis for the Redis cache
 ```
 
-## Context compression
+### Context compression
 Long agent conversations resend every earlier tool output on every turn. **Context compression** shrinks those *older* tool results
 (`role: "tool"` messages, including Anthropic `tool_result` blocks) before they reach the model; user, assistant and system text is never
 touched, and the newest results (everything after the last assistant message) are left intact. Content is classified (JSON, logs, search
@@ -100,7 +154,7 @@ Credits: the compression algorithms are ported from [TinyClaude](https://github.
 [Headroom](https://github.com/headroomlabs-ai/headroom). Small deviations: logs keep their original order and timestamped lines are not
 auto-pinned, volatile-token detection strips only surrounding punctuation, results that are not shorter are discarded.
 
-## Stress test
+### Stress test
 Each gateway card has a **Stress test** button that measures how much a gateway can deliver. It ramps up the number of simultaneous
 streaming requests in stages (profiles: Quick `1,2,4,8`, Standard `…16`, Thorough `…64`, or custom levels) and reports per stage the total
 and per-request tokens/s, prompt-processing speed, time to first token, queue wait, latency and the spread over upstream servers. The
@@ -111,7 +165,7 @@ compression are bypassed and the synthetic requests are not written to the reque
 failing or throughput falls past its peak, can be stopped at any time, only one test runs at a time, and past runs are kept for comparison
 (last 20 per gateway). It sends real load to your upstream servers and needs an explicit confirmation.
 
-## Response cache and optional Redis
+### Response cache and optional Redis
 Caching is configured **per public model** in the gateway editor (on/off, TTL, whether non-zero-temperature requests are cached too,
 and whether **streaming requests** are cached). Cached: `chat/completions` and `embeddings`; send `X-SG-Cache: 0` to bypass or
 `X-SG-Cache: 1` to force caching of one request. Responses carry `X-SG-Cache: hit|miss|skip|bypass`.
@@ -131,7 +185,16 @@ can preconfigure it. The URL (with its password) is stored encrypted. If Redis i
 to memory (switchable in Settings) and reconnects automatically (`SG_CACHE_RETRY_AFTER`, default 15 s). Cached responses are shared by all
 API keys of a gateway.
 
-## Dev / tests
+
+## Compatibility notes
+
+- Anthropic: thinking blocks, streaming events, usage, stop reasons, errors and `/models` follow the Anthropic shape for Anthropic-style
+  requests. Upstreams stay OpenAI-compatible, so `cache_control` hints are ignored.
+- Codex / Responses: function and custom tools, reasoning items and streaming events are translated; `web_search`, `local_shell` and
+  `previous_response_id` are not supported.
+- The gateway **Test** dialog and Playground send OpenAI-format requests.
+
+## Development
 `cd backend && pip install -r requirements.txt && pytest` (Python 3.11–3.12) · `cd frontend && npm i && npm run dev` ·
 `python tools/e2e_stress.py` covers the stress test · `python tools/e2e_stream_cache.py` covers streaming cache · `python tools/e2e_compression.py` covers compression/alignment/insights · `python tools/e2e_redis.py` (needs Docker; starts temporary Redis containers) covers the cache/Redis scenarios · `python tools/e2e_v2.py` runs an end-to-end suite against throw-away mock upstreams and a temporary gateway (never touches your data).
 
