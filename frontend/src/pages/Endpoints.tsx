@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Loader2, Plus, RefreshCw, Trash2, Sparkles } from "lucide-react";
+import { ChevronRight, Loader2, Plus, RefreshCw, Trash2, Sparkles } from "lucide-react";
 import { ALL_CAPS, api } from "../api";
 import { useLive } from "../live";
 import { CapChip, Empty, Modal, PageHeader, StatusDot } from "../components/ui";
@@ -64,6 +64,8 @@ export default function Endpoints() {
   const [eps, setEps] = useState<any[]>([]);
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState<number | null>(null);
+  const [open, setOpen] = useState<Set<number>>(new Set());   // collapsed by default; click an endpoint to see its models
+  const toggle = (id: number) => setOpen((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const { snapshot } = useLive();
   const load = () => api("/api/endpoints").then(setEps);
   useEffect(() => { load(); }, []);
@@ -82,23 +84,26 @@ export default function Endpoints() {
           const status = snapshot?.endpoints?.[ep.id]?.status || ep.status;
           return (
             <div key={ep.id} className="card card-pad">
-              <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex cursor-pointer flex-wrap items-center justify-between gap-3" role="button" tabIndex={0} aria-expanded={open.has(ep.id)}
+                onClick={() => toggle(ep.id)} onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); toggle(ep.id); } }}>
                 <div className="flex items-center gap-3">
+                  <ChevronRight size={16} className={`shrink-0 text-[#787884] transition-transform ${open.has(ep.id) ? "rotate-90" : ""}`} />
                   <StatusDot status={status} />
                   <div>
                     <div className="flex items-center gap-2 text-lg font-semibold">{ep.name}{ep.provider && <span className="chip" style={{ color: "#a79cff", background: "#6c5ce722" }}>{ep.provider === "opencode-go" ? "OpenCode Go" : "OpenCode Zen"}</span>}</div>
                     <div className="mono text-xs text-[#8e8e9a]">{ep.base_url}{ep.api_key ? " · key set" : ""}{ep.slot_source && ep.slot_source !== "none" ? ` · live load via ${ep.slot_source}` : ""}</div>
+                    <div className="mt-0.5 text-xs text-[#787884]">{ep.models.length} model{ep.models.length === 1 ? "" : "s"}{ep.models.length ? ` · ${ep.models.filter((m: any) => m.enabled).length} enabled` : ""}</div>
                   </div>
                   {status === "offline" && ep.last_error && <span className="chip" style={{ color: "#d9776f", background: "#d9776f22" }}>{ep.last_error}</span>}
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                   <button className="btn" disabled={busy === ep.id} onClick={() => rescan(ep.id)}>
                     <RefreshCw size={15} className={busy === ep.id ? "animate-spin" : ""} /> Re-scan
                   </button>
                   <button className="btn danger" onClick={() => del(ep)}><Trash2 size={15} /></button>
                 </div>
               </div>
-              <div className="mt-5 overflow-x-auto scroll-thin">
+              {open.has(ep.id) && <div className="mt-5 overflow-x-auto scroll-thin">
                 <table className="w-full text-sm">
                   <thead><tr className="text-left text-xs uppercase tracking-wider text-[#787884]">
                     <th className="pb-2 font-medium">Model</th><th className="pb-2 font-medium">Capabilities <span className="normal-case">(click to toggle)</span></th>
@@ -130,7 +135,7 @@ export default function Endpoints() {
                   </tbody>
                 </table>
                 {ep.models.length === 0 && <div className="py-4 text-sm text-[#8e8e9a]">No models reported by this endpoint.</div>}
-              </div>
+              </div>}
             </div>
           );
         })}
