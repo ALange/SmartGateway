@@ -42,11 +42,11 @@ function AddEndpoint({ onClose, onDone }: { onClose: () => void; onDone: () => v
             <button key={k} type="button" className={`btn ${kind === k ? "primary" : ""}`} onClick={() => pick(k)}>{v.label}</button>))}</div></div>
         <div><label className="lbl">Name</label><input className="input" placeholder="e.g. GPU box #1" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></div>
         <div><label className="lbl">Base URL</label><input className="input mono" placeholder="http://host:8000/v1" value={f.base_url} readOnly={hosted} onChange={(e) => setF({ ...f, base_url: e.target.value })} /></div>
-        <div><label className="lbl">API key <span className="normal-case text-[#6b7196]">({t.keyHint})</span></label><input className="input mono" type="password" autoComplete="off" placeholder="sk-…" value={f.api_key} onChange={(e) => setF({ ...f, api_key: e.target.value })} /></div>
-        {hosted && <ul className="space-y-1.5 rounded-md border border-white/5 bg-white/[0.02] p-3 text-xs text-[#8a92a6]">{t.notes.map((n) => <li key={n}>• {n}</li>)}</ul>}
-        {!hosted && <label className="flex cursor-pointer items-start gap-3 text-sm text-[#b8bddb]">
+        <div><label className="lbl">API key <span className="normal-case text-[#787884]">({t.keyHint})</span></label><input className="input mono" type="password" autoComplete="off" placeholder="sk-…" value={f.api_key} onChange={(e) => setF({ ...f, api_key: e.target.value })} /></div>
+        {hosted && <ul className="space-y-1.5 rounded-md border border-white/5 bg-white/[0.02] p-3 text-xs text-[#8e8e9a]">{t.notes.map((n) => <li key={n}>• {n}</li>)}</ul>}
+        {!hosted && <label className="flex cursor-pointer items-start gap-3 text-sm text-[#c8c8d0]">
           <input type="checkbox" className="mt-1" checked={f.probe} onChange={(e) => setF({ ...f, probe: e.target.checked })} />
-          <span>Probe capabilities actively <span className="block text-xs text-[#8b91b5]">Sends tiny test requests (embedding, image input, reasoning) to each model for accurate detection.</span></span>
+          <span>Probe capabilities actively <span className="block text-xs text-[#8e8e9a]">Sends tiny test requests (embedding, image input, reasoning) to each model for accurate detection.</span></span>
         </label>}
         {err && <div className="rounded-md border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-300">{err}</div>}
         <div className="flex justify-end gap-2">
@@ -86,8 +86,8 @@ export default function Endpoints() {
                 <div className="flex items-center gap-3">
                   <StatusDot status={status} />
                   <div>
-                    <div className="flex items-center gap-2 text-lg font-semibold">{ep.name}{ep.provider && <span className="chip" style={{ color: "#9fb0e8", background: "#3b6fd822" }}>{ep.provider === "opencode-go" ? "OpenCode Go" : "OpenCode Zen"}</span>}</div>
-                    <div className="mono text-xs text-[#8b91b5]">{ep.base_url}{ep.api_key ? " · key set" : ""}{ep.slot_source && ep.slot_source !== "none" ? ` · live load via ${ep.slot_source}` : ""}</div>
+                    <div className="flex items-center gap-2 text-lg font-semibold">{ep.name}{ep.provider && <span className="chip" style={{ color: "#a79cff", background: "#6c5ce722" }}>{ep.provider === "opencode-go" ? "OpenCode Go" : "OpenCode Zen"}</span>}</div>
+                    <div className="mono text-xs text-[#8e8e9a]">{ep.base_url}{ep.api_key ? " · key set" : ""}{ep.slot_source && ep.slot_source !== "none" ? ` · live load via ${ep.slot_source}` : ""}</div>
                   </div>
                   {status === "offline" && ep.last_error && <span className="chip" style={{ color: "#d9776f", background: "#d9776f22" }}>{ep.last_error}</span>}
                 </div>
@@ -100,7 +100,7 @@ export default function Endpoints() {
               </div>
               <div className="mt-5 overflow-x-auto scroll-thin">
                 <table className="w-full text-sm">
-                  <thead><tr className="text-left text-xs uppercase tracking-wider text-[#6b7196]">
+                  <thead><tr className="text-left text-xs uppercase tracking-wider text-[#787884]">
                     <th className="pb-2 font-medium">Model</th><th className="pb-2 font-medium">Capabilities <span className="normal-case">(click to toggle)</span></th>
                     <th className="pb-2 font-medium">Slots</th><th className="pb-2 font-medium">Load</th><th className="pb-2 font-medium">Enabled</th></tr></thead>
                   <tbody>
@@ -108,7 +108,7 @@ export default function Endpoints() {
                       const live = snapshot?.models?.[m.id];
                       return (
                         <tr key={m.id} className="border-t border-white/5">
-                          <td className="py-3 pr-4"><div className="mono">{m.upstream_id}</div>{m.context_length && <div className="text-xs text-[#6b7196]">ctx {m.context_length}</div>}</td>
+                          <td className="py-3 pr-4"><div className="mono">{m.upstream_id}</div>{m.context_length && <div className="text-xs text-[#787884]">ctx {m.context_length}</div>}</td>
                           <td className="py-3 pr-4"><div className="flex flex-wrap gap-1.5">
                             {ALL_CAPS.map((c) => {
                               const on = m.capabilities.includes(c);
@@ -119,9 +119,9 @@ export default function Endpoints() {
                           <td className="py-3 pr-4"><input type="number" min={1} className="input !w-20 !py-1.5" defaultValue={m.max_slots}
                             onBlur={(e) => +e.target.value !== m.max_slots && patchModel(m, { max_slots: +e.target.value })} /></td>
                           <td className="py-3 pr-4 w-40">
-                            <div className="flex h-2 overflow-hidden rounded-full bg-white/5"><div className="h-full transition-all" style={{ width: `${Math.min(100, ((live?.in_flight || 0) / m.max_slots) * 100)}%`, background: "#3b6fd8" }} />
-                              <div className="h-full transition-all" style={{ width: `${Math.min(100, ((live?.external || 0) / m.max_slots) * 100)}%`, background: "#8a92a6" }} /></div>
-                            <div className="mt-1 text-xs text-[#8b91b5]">{live?.in_flight || 0}{live?.external ? ` + ${live.external} external` : ""}/{m.max_slots} busy{live?.breaker && live.breaker !== "closed" ? ` · breaker ${live.breaker}` : ""}</div>
+                            <div className="flex h-2 overflow-hidden rounded-full bg-white/5"><div className="h-full transition-all" style={{ width: `${Math.min(100, ((live?.in_flight || 0) / m.max_slots) * 100)}%`, background: "#6c5ce7" }} />
+                              <div className="h-full transition-all" style={{ width: `${Math.min(100, ((live?.external || 0) / m.max_slots) * 100)}%`, background: "#8e8e9a" }} /></div>
+                            <div className="mt-1 text-xs text-[#8e8e9a]">{live?.in_flight || 0}{live?.external ? ` + ${live.external} external` : ""}/{m.max_slots} busy{live?.breaker && live.breaker !== "closed" ? ` · breaker ${live.breaker}` : ""}</div>
                           </td>
                           <td className="py-3"><input type="checkbox" checked={m.enabled} onChange={(e) => patchModel(m, { enabled: e.target.checked })} /></td>
                         </tr>
@@ -129,7 +129,7 @@ export default function Endpoints() {
                     })}
                   </tbody>
                 </table>
-                {ep.models.length === 0 && <div className="py-4 text-sm text-[#8b91b5]">No models reported by this endpoint.</div>}
+                {ep.models.length === 0 && <div className="py-4 text-sm text-[#8e8e9a]">No models reported by this endpoint.</div>}
               </div>
             </div>
           );

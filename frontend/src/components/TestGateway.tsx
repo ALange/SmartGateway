@@ -69,7 +69,7 @@ export default function TestGateway({ gw, onClose }: { gw: any; onClose: () => v
 
   return (
     <Modal title={`Test gateway · ${gw.name}`} onClose={onClose} wide>
-      {gw.models.length === 0 ? <div className="text-sm text-[#8a92a6]">This gateway has no public models yet.</div> : (
+      {gw.models.length === 0 ? <div className="text-sm text-[#8e8e9a]">This gateway has no public models yet.</div> : (
         <div className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-4">
             <div><label className="lbl">Public model</label><select className="input" value={model} onChange={(e) => onModel(e.target.value)}>{gw.models.map((m: any) => <option key={m.id}>{m.public_name}</option>)}</select></div>
@@ -77,10 +77,10 @@ export default function TestGateway({ gw, onClose }: { gw: any; onClose: () => v
             <div><label className="lbl">Max tokens</label><input type="number" min={1} className="input" value={maxTokens} onChange={(e) => setMaxTokens(Math.max(1, +e.target.value || 1))} /></div>
             <div><label className="lbl">Parallel requests</label><input type="number" min={1} max={30} className="input" value={count} onChange={(e) => setCount(Math.max(1, Math.min(30, +e.target.value || 1)))} /></div>
           </div>
-          <div className="flex flex-wrap gap-1 text-xs text-[#8a92a6]">Capabilities: {caps.map((c) => <CapChip key={c} cap={c} />)}</div>
+          <div className="flex flex-wrap gap-1 text-xs text-[#8e8e9a]">Capabilities: {caps.map((c) => <CapChip key={c} cap={c} />)}</div>
           <div><label className="lbl">{mode === "embed" ? "Input text" : "Prompt"}</label><textarea className="input" rows={2} value={prompt} onChange={(e) => setPrompt(e.target.value)} /></div>
           <div className="flex items-center justify-between">
-            <span className="mono text-xs text-[#8a92a6]">POST {gw.unified ? unifiedUrl() : gwUrl(gw.slug)}/{mode === "embed" ? "embeddings" : "chat/completions"}</span>
+            <span className="mono text-xs text-[#8e8e9a]">POST {gw.unified ? unifiedUrl() : gwUrl(gw.slug)}/{mode === "embed" ? "embeddings" : "chat/completions"}</span>
             <button className="btn primary" disabled={running || !prompt} onClick={run}>{running ? <Loader2 size={15} className="animate-spin" /> : <Play size={15} />} Run test</button>
           </div>
           {gw.unified
@@ -89,24 +89,24 @@ export default function TestGateway({ gw, onClose }: { gw: any; onClose: () => v
           {rows.length > 0 && (
             <div className="space-y-2">
               {count > 1 && Object.keys(dist).length > 0 && (
-                <div className="rounded-md border border-white/[0.08] p-3 text-xs"><div className="mb-1 text-[#8a92a6]">Distribution across upstreams</div>
+                <div className="rounded-md border border-white/[0.08] p-3 text-xs"><div className="mb-1 text-[#8e8e9a]">Distribution across upstreams</div>
                   {Object.entries(dist).map(([k, v]) => <div key={k} className="flex justify-between"><span className="mono">{k}</span><span>{v}</span></div>)}</div>
               )}
               <div className="max-h-[320px] space-y-2 overflow-auto scroll-thin">
                 {rows.map((r) => (
-                  <div key={r.n} className="rounded-md border border-white/[0.08] bg-[#0c0e13] p-3 text-xs">
+                  <div key={r.n} className="rounded-md border border-white/[0.08] bg-[#17171a] p-3 text-xs">
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
                       <span className="chip" style={{ color: r.error ? "#d9776f" : r.done ? "#5fb585" : "#d1a553", background: (r.error ? "#d9776f" : r.done ? "#5fb585" : "#d1a553") + "22" }}>{r.error ? `error ${r.status || ""}` : r.done ? `${r.status} OK` : "running…"}</span>
-                      {r.upstream && <span>→ <span className="mono">{r.upstream}</span> <span className="text-[#8a92a6]">@ {r.endpoint}</span></span>}
-                      {r.total != null && <span className="text-[#8a92a6]">{ms(r.total)}{r.ttft ? ` · TTFT ${ms(r.ttft)}` : ""}</span>}
+                      {r.upstream && <span>→ <span className="mono">{r.upstream}</span> <span className="text-[#8e8e9a]">@ {r.endpoint}</span></span>}
+                      {r.total != null && <span className="text-[#8e8e9a]">{ms(r.total)}{r.ttft ? ` · TTFT ${ms(r.ttft)}` : ""}</span>}
                       {!!r.queue && <span className="text-[#d1a553]">queued {ms(r.queue)}</span>}
-                      {r.tokens && <span className="text-[#8a92a6]">tokens {r.tokens}</span>}
-                      {r.finish && <span className={r.finish === "length" ? "text-[#d1a553]" : "text-[#8a92a6]"}>finish: {r.finish}</span>}
+                      {r.tokens && <span className="text-[#8e8e9a]">tokens {r.tokens}</span>}
+                      {r.finish && <span className={r.finish === "length" ? "text-[#d1a553]" : "text-[#8e8e9a]"}>finish: {r.finish}</span>}
                       {r.cache && <span className="chip" style={{ color: r.cache === "hit" ? "#5fb585" : "#d1a553", background: (r.cache === "hit" ? "#5fb585" : "#d1a553") + "22" }}>cache {r.cache}</span>}
                       {r.attempts && +r.attempts > 1 && <span className="text-[#d1a553]">{r.attempts} attempts</span>}
                     </div>
-                    {r.reasoning && <details className="mt-2 text-[#8a92a6]"><summary className="cursor-pointer">Reasoning ({r.reasoning.length} chars)</summary><div className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap scroll-thin italic">{r.reasoning}</div></details>}
-                    {(r.text || r.error) && <div className={`mt-2 whitespace-pre-wrap ${r.error ? "text-red-300" : "text-[#dde1ea]"}`}>{r.error || r.text}</div>}
+                    {r.reasoning && <details className="mt-2 text-[#8e8e9a]"><summary className="cursor-pointer">Reasoning ({r.reasoning.length} chars)</summary><div className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap scroll-thin italic">{r.reasoning}</div></details>}
+                    {(r.text || r.error) && <div className={`mt-2 whitespace-pre-wrap ${r.error ? "text-red-300" : "text-[#ececf0]"}`}>{r.error || r.text}</div>}
                     {r.done && !r.error && !r.text && mode !== "embed" && <div className="mt-2 text-[#d1a553]">No answer text returned{r.finish === "length" ? " — the token limit was reached while the model was still reasoning. Increase Max tokens." : "."}</div>}
                   </div>
                 ))}

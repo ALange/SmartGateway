@@ -1,15 +1,15 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { ArrowUpRight, Check, Clock } from "lucide-react";
+import { Activity, ArrowUpRight, Check, CheckCircle2, Clock, Minimize2, Zap } from "lucide-react";
 import { api, PALETTE } from "../api";
 import { useLive } from "../live";
-import { fmt, ms, PageHeader, StatusDot } from "../components/ui";
+import { fmt, ms, PageHeader, Stat, StatusDot } from "../components/ui";
 import McpPanel from "../components/McpPanel";
 import { CachePanel, ModelSpeedTable, PerformancePanel, SpeedChart } from "../components/PerfPanels";
 
 const RANGES: [string, number][] = [["15 min", 15], ["1 hour", 60], ["6 hours", 360], ["24 hours", 1440]];
-const tip = { contentStyle: { background: "#10132a", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, fontSize: 12 }, cursor: { fill: "rgba(255,255,255,0.04)" } };
+const tip = { contentStyle: { background: "#202024", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, fontSize: 12 }, cursor: { fill: "rgba(255,255,255,0.04)" } };
 
 export default function Dashboard() {
   const [minutes, setMinutes] = useState(60);
@@ -36,12 +36,12 @@ export default function Dashboard() {
     <div className="fadein">
       <PageHeader title="Dashboard" sub="Traffic, health and capacity across all gateways."
         actions={<div className="flex gap-1 rounded-lg border border-white/5 bg-white/[0.03] p-1">
-          {RANGES.map(([l, v]) => <button key={v} onClick={() => setMinutes(v)} className={`rounded-md px-3.5 py-1.5 text-sm ${minutes === v ? "bg-white/10 text-white" : "text-[#8b91b5]"}`}>{l}</button>)}</div>} />
+          {RANGES.map(([l, v]) => <button key={v} onClick={() => setMinutes(v)} className={`rounded-md px-3.5 py-1.5 text-sm ${minutes === v ? "bg-white/10 text-white" : "text-[#8e8e9a]"}`}>{l}</button>)}</div>} />
 
       {(eps.length === 0 || gws.length === 0) && (
         <div className="card card-pad mb-5">
           <h3 className="text-base font-semibold">Get started</h3>
-          <p className="mt-1 text-sm text-[#8a92a6]">Three steps to your first request.</p>
+          <p className="mt-1 text-sm text-[#8e8e9a]">Three steps to your first request.</p>
           <div className="mt-4 grid gap-3 md:grid-cols-3">
             {([
               ["1", "Add an endpoint", "Point SmartGateway at an OpenAI-compatible server (llama.cpp, vLLM, Ollama, a hosted API).", "/endpoints", eps.length > 0],
@@ -50,25 +50,22 @@ export default function Dashboard() {
             ] as [string, string, string, string, boolean][]).map(([n, t, d, to, done]) => (
               <Link key={n} to={to} className="rounded-lg border border-white/5 bg-white/[0.02] p-4 hover:bg-white/[0.05]">
                 <div className="flex items-center gap-2 text-sm font-medium">
-                  <span className="grid h-6 w-6 place-items-center rounded-full text-xs" style={{ background: done ? "#5fb58533" : "#3b6fd833", color: done ? "#7fd1a3" : "#9fb0ff" }}>{done ? <Check size={13} /> : n}</span>{t}
+                  <span className="grid h-6 w-6 place-items-center rounded-full text-xs" style={{ background: done ? "#5fb58533" : "#6c5ce733", color: done ? "#7fd1a3" : "#a79cff" }}>{done ? <Check size={13} /> : n}</span>{t}
                 </div>
-                <div className="mt-2 text-xs text-[#8a92a6]">{d}</div>
+                <div className="mt-2 text-xs text-[#8e8e9a]">{d}</div>
               </Link>
             ))}
           </div>
         </div>
       )}
 
-      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-5">
-        {[
-          ["Requests", fmt(s.total), `${s.rps} req/s`],
-          ["Success rate", (s.success_rate * 100).toFixed(1) + "%", `${s.errors} errors`],
-          ["Latency p50 / p95", `${ms(s.p50_ms)}`, `p95 ${ms(s.p95_ms)}`],
-          ["Tokens generated", fmt(s.completion_tokens), `${fmt(s.prompt_tokens)} prompt`],
-          ["Saved by compression", comp ? fmt(comp.totals.tokensNotSent) : "–", comp && comp.totals.potentialTokensNotSent ? `${fmt(comp.totals.potentialTokensNotSent)} more in shadow mode` : "prompt tokens not sent"],
-        ].map(([t, v, sub]) => (
-          <div key={t} className="card card-pad"><div className="text-sm text-[#8b91b5]">{t}</div><div className="mt-1.5 text-2xl font-semibold">{v}</div><div className="mt-1 text-xs text-[#6b7196]">{sub}</div></div>
-        ))}
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <Stat icon={Activity} label="Requests" value={fmt(s.total)} unit="total" sub={`${s.rps} req/s`} />
+        <Stat icon={CheckCircle2} label="Success rate" value={(s.success_rate * 100).toFixed(1) + "%"} sub={`${s.errors} errors`} tone={s.errors ? "warn" : "ok"} />
+        <Stat icon={Clock} label="Latency p50 / p95" value={ms(s.p50_ms)} sub={`p95 ${ms(s.p95_ms)}`} />
+        <Stat icon={Zap} label="Tokens generated" value={fmt(s.completion_tokens)} unit="tok" sub={`${fmt(s.prompt_tokens)} prompt`} />
+        <Stat icon={Minimize2} label="Saved by compression" value={comp ? fmt(comp.totals.tokensNotSent) : "–"} unit="tok" tone="ok"
+          sub={comp && comp.totals.potentialTokensNotSent ? `${fmt(comp.totals.potentialTokensNotSent)} more in shadow mode` : "prompt tokens not sent"} />
       </div>
 
       <div className="mt-5 grid gap-5 xl:grid-cols-[1fr_1fr_1.4fr]">
@@ -78,8 +75,8 @@ export default function Dashboard() {
             {donut.length ? <ResponsiveContainer><PieChart>
               <Pie data={donut} dataKey="requests" nameKey="name" innerRadius={60} outerRadius={80} paddingAngle={1} cornerRadius={0} stroke="none">
                 {donut.map((d: any, i: number) => <Cell key={i} fill={d.fill} />)}</Pie><Tooltip {...tip} /></PieChart></ResponsiveContainer>
-              : <div className="flex h-full items-center justify-center text-sm text-[#6b7196]">No traffic yet</div>}
-            {donut.length > 0 && <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center"><div className="text-2xl font-semibold">{fmt(s.total)}</div><div className="text-xs text-[#8b91b5]">requests</div></div>}
+              : <div className="flex h-full items-center justify-center text-sm text-[#787884]">No traffic yet</div>}
+            {donut.length > 0 && <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center"><div className="text-2xl font-semibold">{fmt(s.total)}</div><div className="text-xs text-[#8e8e9a]">requests</div></div>}
           </div>
           <div className="mt-3 space-y-2.5">{donut.map((d: any) => (
             <div key={d.endpoint_id} className="flex items-center justify-between text-sm"><span className="flex items-center gap-2"><i className="h-2 w-2 rounded-full" style={{ background: d.fill }} />{d.name}</span><span>{fmt(d.requests)}</span></div>))}</div>
@@ -93,25 +90,25 @@ export default function Dashboard() {
               const slots = e.models.reduce((a: number, m: any) => a + m.max_slots, 0);
               const used = e.models.reduce((a: number, m: any) => a + (snapshot?.models?.[m.id]?.in_flight || 0), 0);
               return (<div key={e.id}>
-                <div className="flex items-center justify-between text-sm"><span className="flex items-center gap-2"><StatusDot status={st} />{e.name}</span><span className="text-[#8b91b5]">{used}/{slots}</span></div>
-                <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/5"><div className="h-full rounded-full" style={{ width: `${slots ? (used / slots) * 100 : 0}%`, background: "#3b6fd8" }} /></div>
+                <div className="flex items-center justify-between text-sm"><span className="flex items-center gap-2"><StatusDot status={st} />{e.name}</span><span className="text-[#8e8e9a]">{used}/{slots}</span></div>
+                <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/5"><div className="h-full rounded-full" style={{ width: `${slots ? (used / slots) * 100 : 0}%`, background: "#6c5ce7" }} /></div>
               </div>);
             })}
-            {eps.length === 0 && <div className="text-sm text-[#6b7196]">No endpoints configured.</div>}
+            {eps.length === 0 && <div className="text-sm text-[#787884]">No endpoints configured.</div>}
           </div>
-          <div className="mt-6 border-t border-white/5 pt-4 text-xs text-[#8b91b5]">Slot utilization: {busy}/{totalSlots} slots busy</div>
+          <div className="mt-6 border-t border-white/5 pt-4 text-xs text-[#8e8e9a]">Slot utilization: {busy}/{totalSlots} slots busy</div>
         </div>
 
         <div className="card card-pad">
           <h3 className="text-base font-semibold">Requests over time</h3>
           <div className="mt-3 h-[260px]">
             <ResponsiveContainer><BarChart data={bars} barSize={14}>
-              <defs><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#3b6fd8" /><stop offset="100%" stopColor="#3b6fd8" /></linearGradient></defs>
-              <XAxis dataKey="label" tick={{ fill: "#6b7196", fontSize: 11 }} axisLine={false} tickLine={false} interval={Math.floor(bars.length / 6)} />
-              <YAxis tick={{ fill: "#6b7196", fontSize: 11 }} axisLine={false} tickLine={false} width={30} allowDecimals={false} />
+              <defs><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#4cc38a" /><stop offset="100%" stopColor="#2f8f5f" /></linearGradient></defs>
+              <XAxis dataKey="label" tick={{ fill: "#787884", fontSize: 11 }} axisLine={false} tickLine={false} interval={Math.floor(bars.length / 6)} />
+              <YAxis tick={{ fill: "#787884", fontSize: 11 }} axisLine={false} tickLine={false} width={30} allowDecimals={false} />
               <Tooltip {...tip} />
-              <Bar dataKey="ok" stackId="a" fill="url(#bg)" name="ok" radius={[2, 2, 0, 0]} />
-              <Bar dataKey="errors" stackId="a" fill="#d9776f" name="errors" radius={[2, 2, 0, 0]} />
+              <Bar dataKey="ok" stackId="a" fill="url(#bg)" name="ok" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="errors" stackId="a" fill="#ef6a6a" name="errors" radius={[4, 4, 0, 0]} />
             </BarChart></ResponsiveContainer>
           </div>
         </div>
@@ -126,8 +123,8 @@ export default function Dashboard() {
 
       <div className="mt-5 grid gap-5 xl:grid-cols-[1.3fr_1fr]">
         <div className="relative min-h-[220px] overflow-hidden rounded-lg border border-white/[0.08] p-6"
-          style={{ background: "#12151c" }}>
-          <span className="chip border border-white/10 text-[#8a92a6]">Insights</span>
+          style={{ background: "#202024" }}>
+          <span className="chip border border-white/10 text-[#8e8e9a]">Insights</span>
           <p className="mt-10 max-w-lg text-lg leading-snug">
             {s.total === 0 ? "Send traffic to a gateway to see routing insights here."
               : `${top.model} handled ${Math.round((top.requests / s.total) * 100)}% of requests with ${(s.success_rate * 100).toFixed(0)}% success; median TTFT ${ms(s.ttft_p50_ms)}.`}
@@ -140,11 +137,11 @@ export default function Dashboard() {
             {gws.map((g) => {
               const q = snapshot?.queue?.[g.id] || 0;
               return <Link key={g.id} to={`/gateways/${g.id}`} className="flex items-center justify-between rounded-lg border border-white/5 bg-white/[0.02] px-4 py-3 hover:bg-white/[0.05]">
-                <div><div className="font-medium">{g.name}</div><div className="mono text-xs text-[#8b91b5]">{g.models.map((m: any) => m.public_name).join(", ") || "no models"}</div></div>
-                {q > 0 ? <span className="chip text-[#d1a553]" style={{ background: "#d1a55322" }}><Clock size={12} /> {q} queued</span> : <ArrowUpRight size={16} className="text-[#6b7196]" />}
+                <div><div className="font-medium">{g.name}</div><div className="mono text-xs text-[#8e8e9a]">{g.models.map((m: any) => m.public_name).join(", ") || "no models"}</div></div>
+                {q > 0 ? <span className="chip text-[#d1a553]" style={{ background: "#d1a55322" }}><Clock size={12} /> {q} queued</span> : <ArrowUpRight size={16} className="text-[#787884]" />}
               </Link>;
             })}
-            {gws.length === 0 && <div className="text-sm text-[#6b7196]">No gateways yet.</div>}
+            {gws.length === 0 && <div className="text-sm text-[#787884]">No gateways yet.</div>}
           </div>
         </div>
       </div>

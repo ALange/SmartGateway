@@ -20,7 +20,7 @@ export default function Login({ onDone }: { onDone: () => void }) {
           <Logo size={32} />
           <span className="text-base font-semibold">SmartGateway</span>
         </div>
-        <div className="text-sm text-[#8a92a6]">Sign in to manage endpoints and gateways.</div>
+        <div className="text-sm text-[#8e8e9a]">Sign in to manage endpoints and gateways.</div>
         <div><label className="lbl">Username</label><input className="input" value={u} onChange={(e) => setU(e.target.value)} autoComplete="username" /></div>
         <div><label className="lbl">Password</label><input className="input" type="password" value={p} onChange={(e) => setP(e.target.value)} autoComplete="current-password" autoFocus /></div>
         {err && <div className="rounded-md border border-red-400/30 bg-red-400/10 p-2.5 text-sm text-red-300">{err}</div>}

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { Plus, Save, Trash2 } from "lucide-react";
 import { api, STRATEGIES } from "../api";
 import { CapChip, PageHeader } from "../components/ui";
@@ -52,8 +52,7 @@ export default function GatewayEditor() {
 
   return (
     <div className="fadein">
-      <Link to="/gateways" className="mb-2 inline-block text-sm text-[#8a92a6] hover:text-white">← Gateways</Link>
-      <PageHeader title={id ? "Edit gateway" : "New smart gateway"} sub="Combine upstream models into one endpoint that speaks both the OpenAI and the Anthropic API."
+      <PageHeader back="/gateways" crumb={["Gateways"]} title={id ? "Edit gateway" : "New smart gateway"} sub="Combine upstream models into one endpoint that speaks both the OpenAI and the Anthropic API."
         actions={<><button className="btn" onClick={() => nav(-1)}>Cancel</button><button className="btn primary" onClick={save}><Save size={16} /> Save gateway</button></>} />
       {err && <div className="mb-4 rounded-md border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-300">{err}</div>}
 
@@ -84,18 +83,18 @@ export default function GatewayEditor() {
                 <label className="btn cursor-pointer" title="Turn the model off without deleting it: requests for it get 404 and it is hidden from /v1/models. Its settings and upstreams are kept."><input type="checkbox" checked={m.enabled !== false} onChange={(e) => setModel(i, { enabled: e.target.checked })} /> Enabled</label>
                 <button className="btn danger" onClick={() => setF({ ...f, models: f.models.filter((_: any, j: number) => j !== i) })}><Trash2 size={15} /></button>
               </div>
-              <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-[#8a92a6]">Combined capabilities: {[...caps].map((c) => <CapChip key={c} cap={c} />)}{caps.size === 0 && "—"}</div>
+              <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-[#8e8e9a]">Combined capabilities: {[...caps].map((c) => <CapChip key={c} cap={c} />)}{caps.size === 0 && "—"}</div>
 
               <table className="mt-4 w-full text-sm">
-                <thead><tr className="text-left text-xs uppercase tracking-wider text-[#6b7196]"><th className="pb-2 font-medium">Upstream model</th><th className="pb-2 font-medium">Weight</th><th className="pb-2 font-medium">Priority</th>
+                <thead><tr className="text-left text-xs uppercase tracking-wider text-[#787884]"><th className="pb-2 font-medium">Upstream model</th><th className="pb-2 font-medium">Weight</th><th className="pb-2 font-medium">Priority</th>
                   {strat === "tiered" && <th className="pb-2 font-medium">Tier</th>}<th className="pb-2 font-medium">Slot cap</th><th className="pb-2 font-medium" title="Used only when primaries are down or full for a few seconds">Fallback</th><th /></tr></thead>
                 <tbody>
                   {m.members.map((x: any, k: number) => {
                     const um = byId(x.model_id);
                     return (
                       <tr key={k} className="border-t border-white/5">
-                        <td className="py-2 pr-3"><div className="mono">{um?.upstream_id} <span className="text-[#6b7196]">@ {um?.endpoint_name}</span></div>
-                          <div className="mt-1 flex flex-wrap gap-1">{um?.capabilities.map((c: string) => <CapChip key={c} cap={c} />)}<span className="chip text-[#8b91b5]">{um?.max_slots} slots</span>{um?.context_length && <span className="chip text-[#8b91b5]">ctx {um.context_length}</span>}</div></td>
+                        <td className="py-2 pr-3"><div className="mono">{um?.upstream_id} <span className="text-[#787884]">@ {um?.endpoint_name}</span></div>
+                          <div className="mt-1 flex flex-wrap gap-1">{um?.capabilities.map((c: string) => <CapChip key={c} cap={c} />)}<span className="chip text-[#8e8e9a]">{um?.max_slots} slots</span>{um?.context_length && <span className="chip text-[#8e8e9a]">ctx {um.context_length}</span>}</div></td>
                         <td className="py-2 pr-3"><input type="number" min={1} className="input !w-20 !py-1.5" value={x.weight} onChange={(e) => setMember(i, k, { weight: e.target.value })} /></td>
                         <td className="py-2 pr-3"><input type="number" className="input !w-20 !py-1.5" value={x.priority} onChange={(e) => setMember(i, k, { priority: e.target.value })} /></td>
                         {strat === "tiered" && <td className="py-2 pr-3"><select className="input !w-28 !py-1.5" value={x.tier ?? 2} onChange={(e) => setMember(i, k, { tier: +e.target.value })}><option value={1}>1 · small</option><option value={2}>2 · medium</option><option value={3}>3 · large</option></select></td>}
@@ -116,14 +115,14 @@ export default function GatewayEditor() {
 
               <div className="mt-4 rounded-md border border-white/[0.08] p-3">
                 <label className="flex cursor-pointer items-center gap-3 text-sm font-medium"><input type="checkbox" checked={!!m.cache_enabled} onChange={(e) => setModel(i, { cache_enabled: e.target.checked })} /> Cache responses for this model
-                  <span className="chip text-[#8a92a6]" style={{ background: "#ffffff0d" }}>backend: {cacheBackend}</span></label>
+                  <span className="chip text-[#8e8e9a]" style={{ background: "#ffffff0d" }}>backend: {cacheBackend}</span></label>
                 {m.cache_enabled && (
                   <div className="mt-3 grid gap-4 md:grid-cols-2">
                     <div><label className="lbl">TTL (seconds)</label><input type="number" min={1} className="input" placeholder="default (see Settings)" value={m.cache_ttl} onChange={(e) => setModel(i, { cache_ttl: e.target.value })} /></div>
                     <label className="flex cursor-pointer items-start gap-3 self-end text-sm"><input type="checkbox" className="mt-1" checked={!!m.cache_any_temperature} onChange={(e) => setModel(i, { cache_any_temperature: e.target.checked })} />
-                      <span>Also cache non-deterministic requests<span className="block text-xs text-[#6b7196]">Off: only requests with temperature 0 (or header X-SG-Cache: 1). X-SG-Cache: 0 bypasses.</span></span></label>
+                      <span>Also cache non-deterministic requests<span className="block text-xs text-[#787884]">Off: only requests with temperature 0 (or header X-SG-Cache: 1). X-SG-Cache: 0 bypasses.</span></span></label>
                     <label className="flex cursor-pointer items-start gap-3 text-sm"><input type="checkbox" className="mt-1" checked={!!m.cache_streaming} onChange={(e) => setModel(i, { cache_streaming: e.target.checked })} />
-                      <span>Also cache streaming requests<span className="block text-xs text-[#6b7196]">A stream is stored once it completes and later replayed to streaming <i>and</i> non-streaming clients. Interrupted streams are never stored.</span></span></label>
+                      <span>Also cache streaming requests<span className="block text-xs text-[#787884]">A stream is stored once it completes and later replayed to streaming <i>and</i> non-streaming clients. Interrupted streams are never stored.</span></span></label>
                     {m.cache_streaming && <div><label className="lbl">Replay speed for streaming hits</label>
                       <select className="input" value={m.cache_replay_speed || "instant"} onChange={(e) => setModel(i, { cache_replay_speed: e.target.value })}>
                         <option value="instant">Instant (fastest)</option><option value="realistic">Realistic (same duration as the original answer)</option></select></div>}
@@ -134,17 +133,17 @@ export default function GatewayEditor() {
                 <div className="text-sm font-medium">Context compression</div>
                 <select className="input !w-auto" value={m.compress_mode || ""} onChange={(e) => setModel(i, { compress_mode: e.target.value })}>
                   <option value="">Use global setting</option><option value="off">Off</option><option value="shadow">Shadow (measure only)</option><option value="on">On</option></select>
-                <span className="text-xs text-[#6b7196]">Shrinks older tool results before they are sent upstream. Global default is set in Settings.</span>
+                <span className="text-xs text-[#787884]">Shrinks older tool results before they are sent upstream. Global default is set in Settings.</span>
               </div>
 
               <GuardrailsEditor value={m.guardrails} onChange={(v) => setModel(i, { guardrails: v })} />
 
               <details className="mt-4 rounded-md border border-white/[0.08] p-3">
-                <summary className="cursor-pointer text-sm text-[#8a92a6]">Request overrides (optional) — pass-through unless set</summary>
+                <summary className="cursor-pointer text-sm text-[#8e8e9a]">Request overrides (optional) — pass-through unless set</summary>
                 <div className="mt-3 grid gap-4 md:grid-cols-2">
                   <div className="md:col-span-2"><label className="lbl">System prompt (prepended to every chat request)</label><textarea className="input" rows={2} value={m.system_prompt} onChange={(e) => setModel(i, { system_prompt: e.target.value })} /></div>
                   <div><label className="lbl">Max tokens ceiling</label><input type="number" min={1} className="input" placeholder="no ceiling" value={m.max_tokens_cap} onChange={(e) => setModel(i, { max_tokens_cap: e.target.value })} />
-                    <p className="mt-1 text-xs text-[#6b7196]">Clamps max_tokens / max_completion_tokens; applied as the limit when the client sends none.</p></div>
+                    <p className="mt-1 text-xs text-[#787884]">Clamps max_tokens / max_completion_tokens; applied as the limit when the client sends none.</p></div>
                   <div><label className="lbl">Default parameters (JSON, only when the client omits them)</label><textarea className="input mono" rows={3} placeholder='{"temperature": 0.2}' value={m.default_params} onChange={(e) => setModel(i, { default_params: e.target.value })} /></div>
                 </div>
               </details>
@@ -156,7 +155,7 @@ export default function GatewayEditor() {
 
       <div className="mt-8">
         {id ? <KeysPanel gwId={+id} slug={f.slug} models={f.models.map((m: any) => m.public_name).filter(Boolean)} />
-          : <div className="card card-pad text-sm text-[#8a92a6]">Save the gateway first, then add API keys with rate limits and quotas here.</div>}
+          : <div className="card card-pad text-sm text-[#8e8e9a]">Save the gateway first, then add API keys with rate limits and quotas here.</div>}
       </div>
     </div>
   );

@@ -15,7 +15,7 @@ export async function api<T = any>(path: string, opts: RequestInit & { json?: an
 }
 
 export const CAP_STYLE: Record<string, { color: string; label: string }> = {
-  chat: { color: "#8b91b5", label: "chat" },
+  chat: { color: "#8e8e9a", label: "chat" },
   reasoning: { color: "#a78bd4", label: "reasoning" },
   vision: { color: "#5aa9d6", label: "vision" },
   audio: { color: "#d08f5a", label: "audio" },
@@ -35,7 +35,7 @@ export const STRATEGIES: Record<string, string> = {
   random: "Random",
   tiered: "Tiered (small → large by prompt complexity)",
 };
-export const PALETTE = ["#4f7fd9", "#5fa3b5", "#8a8fc4", "#62a58f", "#c2a05a", "#b0809a", "#c08b5f"];
+export const PALETTE = ["#7c6cf0", "#4cc38a", "#e0a458", "#5fa3d9", "#d9776f", "#b58ae0", "#5fb5b0"];
 export const gwUrl = (slug: string) => `${location.origin}/gw/${slug}/v1`;
 export const unifiedUrl = () => `${location.origin}/unified/v1`;
 export const adminGwUrl = (slug: string) => `${location.origin}/api/admin-gw/${slug}/v1`;

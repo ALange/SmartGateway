@@ -48,35 +48,35 @@ export default function UnifiedLive() {
     <div className="fadein">
       <PageHeader title="Unified endpoint" sub={`${url}  ·  live traffic of the exposed gateways`}
         actions={<><button className="btn primary" onClick={() => setTesting(true)} disabled={testGw.models.length === 0}><FlaskConical size={15} /> Test</button><button className="btn" onClick={() => navigator.clipboard?.writeText(url)}><Copy size={15} /> Copy URL</button><Link to="/unified" className="btn"><Pencil size={15} /> Edit</Link></>} />
-      {!uni.enabled && <div className="mb-5 rounded-md border border-white/10 p-3 text-sm text-[#8b91b5]">The unified endpoint is disabled. Enable it in <Link to="/unified" className="text-[#7d9be0] hover:underline">Unified settings</Link>.</div>}
+      {!uni.enabled && <div className="mb-5 rounded-md border border-white/10 p-3 text-sm text-[#8e8e9a]">The unified endpoint is disabled. Enable it in <Link to="/unified" className="text-[#a79cff] hover:underline">Unified settings</Link>.</div>}
       {exposed.length === 0 && !(uni.models || []).length ? (
-        <div className="card card-pad text-sm text-[#8b91b5]">Nothing exposed yet. Choose gateways or models in <Link to="/unified" className="text-[#7d9be0] hover:underline">Unified settings</Link>.</div>
+        <div className="card card-pad text-sm text-[#8e8e9a]">Nothing exposed yet. Choose gateways or models in <Link to="/unified" className="text-[#a79cff] hover:underline">Unified settings</Link>.</div>
       ) : (
         <div className="grid gap-5 xl:grid-cols-[1fr_340px]">
           <FlowGraph gw={flow} onEvent={onEvent} />
           <div className="space-y-5">
             <div className="card card-pad">
               <h3 className="mb-1 text-sm font-semibold">Last 15 minutes</h3>
-              <p className="mb-3 text-xs text-[#6b7196]">Includes calls made directly to these gateways.</p>
+              <p className="mb-3 text-xs text-[#787884]">Includes calls made directly to these gateways.</p>
               <div className="grid grid-cols-2 gap-3">
                 {[["Requests", stats ? fmt(stats.total) : "–"], ["Success", stats ? (stats.success_rate * 100).toFixed(1) + "%" : "–"], ["Latency p50", stats ? ms(stats.p50_ms) : "–"], ["TTFT p50", stats ? ms(stats.ttft_p50_ms) : "–"], ["Tokens/s", tps], ["Queue", String(qd)]].map(([k, v]) => (
-                  <div key={k} className="rounded-lg border border-white/5 bg-white/[0.02] p-3"><div className="text-xs text-[#8b91b5]">{k}</div><div className="mt-1 text-xl font-semibold">{v}</div></div>))}
+                  <div key={k} className="rounded-lg border border-white/5 bg-white/[0.02] p-3"><div className="text-xs text-[#8e8e9a]">{k}</div><div className="mt-1 text-xl font-semibold">{v}</div></div>))}
               </div>
             </div>
             <div className="card card-pad">
               <h3 className="mb-3 text-sm font-semibold">Live requests</h3>
               <div className="space-y-1.5 text-xs">
-                {tail.length === 0 && <div className="text-[#6b7196]">Waiting for traffic…</div>}
+                {tail.length === 0 && <div className="text-[#787884]">Waiting for traffic…</div>}
                 {tail.map((e) => (
                   <div key={e.key} className="flex items-center justify-between gap-2 rounded-lg bg-white/[0.02] px-2.5 py-1.5">
                     <span className="mono truncate">{e.type === "start" ? `→ ${e.upstream}` : e.type === "queued" ? "queued" : e.type === "retry" ? "↻ retry" : e.ok ? `✓ ${ms(e.total_ms)}` : `✗ ${e.status}`}</span>
-                    <span className="shrink-0 text-[#6b7196]">{e.public_model}{e.requirements ? ` [${e.requirements}]` : ""}</span>
+                    <span className="shrink-0 text-[#787884]">{e.public_model}{e.requirements ? ` [${e.requirements}]` : ""}</span>
                   </div>))}
               </div>
             </div>
             <div className="card card-pad">
               <h3 className="mb-2 text-sm font-semibold">Use it</h3>
-              <pre className="mono scroll-thin overflow-x-auto rounded-md bg-black/40 p-3 text-[11px] leading-relaxed text-[#9fb0ff]">{`curl ${url}/chat/completions \\
+              <pre className="mono scroll-thin overflow-x-auto rounded-md bg-black/40 p-3 text-[11px] leading-relaxed text-[#a79cff]">{`curl ${url}/chat/completions \\
   -H "Authorization: Bearer <${uni.keys.length ? "unified API key" : "gateway API key, if the gateway has one"}>" \\
   -H "Content-Type: application/json" \\
   -d '{"model":"${uni.model_names[0] || "model"}",

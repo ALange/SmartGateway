@@ -22,11 +22,11 @@ function KeyForm({ gwId, tools, init, onClose, onDone }: { gwId: number; tools: 
           <div><label className="lbl">Requests / minute</label><input type="number" min={1} className="input" placeholder="unlimited" value={f.rpm_limit} onChange={(e) => setF({ ...f, rpm_limit: e.target.value })} /></div>
           <div><label className="lbl">Expires in (days)</label><input type="number" min={1} className="input" placeholder={init?.expires_at ? "keep current" : "never"} value={f.expires_days} onChange={(e) => setF({ ...f, expires_days: e.target.value })} /></div>
         </div>
-        <div><label className="lbl">Allowed tools <span className="normal-case text-[#6b7196]">(none selected = all)</span></label>
+        <div><label className="lbl">Allowed tools <span className="normal-case text-[#787884]">(none selected = all)</span></label>
           <div className="flex max-h-48 flex-wrap gap-2 overflow-auto scroll-thin">{tools.map((t) => (
             <label key={t} className="btn cursor-pointer !py-1"><input type="checkbox" checked={f.allowed_tools.includes(t)}
               onChange={(e) => setF({ ...f, allowed_tools: e.target.checked ? [...f.allowed_tools, t] : f.allowed_tools.filter((x: string) => x !== t) })} /> <span className="mono">{t}</span></label>))}
-            {tools.length === 0 && <span className="text-sm text-[#6b7196]">This gateway exposes no tools yet.</span>}</div></div>
+            {tools.length === 0 && <span className="text-sm text-[#787884]">This gateway exposes no tools yet.</span>}</div></div>
         {err && <div className="rounded-md border border-red-400/30 bg-red-400/10 p-2.5 text-sm text-red-300">{err}</div>}
         <div className="flex justify-end gap-2"><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" disabled={!f.name} onClick={save}>{init ? "Save" : "Create key"}</button></div>
       </div>
@@ -48,11 +48,11 @@ export default function McpKeys({ gwId, tools, slug }: { gwId: number; tools: st
         <h3 className="flex items-center gap-2 text-base font-semibold"><KeyRound size={16} /> API keys</h3>
         <button className="btn" onClick={() => setForm({})}><Plus size={15} /> New key</button>
       </div>
-      {keys.length === 0 ? <p className="text-sm text-[#8b91b5]">No keys: this MCP gateway is open to anyone who can reach it. Create a key to require <span className="mono">Authorization: Bearer …</span> or <span className="mono">x-api-key</span>.</p> : (
+      {keys.length === 0 ? <p className="text-sm text-[#8e8e9a]">No keys: this MCP gateway is open to anyone who can reach it. Create a key to require <span className="mono">Authorization: Bearer …</span> or <span className="mono">x-api-key</span>.</p> : (
         <table className="w-full text-sm"><tbody>{keys.map((k) => (
           <tr key={k.id} className="border-t border-white/5">
-            <td className="py-2.5 pr-3 font-medium">{k.name}</td><td className="mono pr-3 text-xs text-[#8b91b5]">{k.key_prefix}</td>
-            <td className="pr-3 text-xs text-[#8a92a6]">{[k.rpm_limit && `${k.rpm_limit} rpm`, k.allowed_tools?.length && `${k.allowed_tools.length} tool(s)`, k.expires_at && `expires ${new Date(k.expires_at * 1000).toLocaleDateString()}`].filter(Boolean).join(" · ") || "no limits"}</td>
+            <td className="py-2.5 pr-3 font-medium">{k.name}</td><td className="mono pr-3 text-xs text-[#8e8e9a]">{k.key_prefix}</td>
+            <td className="pr-3 text-xs text-[#8e8e9a]">{[k.rpm_limit && `${k.rpm_limit} rpm`, k.allowed_tools?.length && `${k.allowed_tools.length} tool(s)`, k.expires_at && `expires ${new Date(k.expires_at * 1000).toLocaleDateString()}`].filter(Boolean).join(" · ") || "no limits"}</td>
             <td className="pr-3"><input type="checkbox" checked={k.enabled} onChange={() => toggle(k)} /></td>
             <td className="text-right"><button className="btn !p-1.5" onClick={() => setForm(k)}><Pencil size={14} /></button> <button className="btn danger !p-1.5" onClick={() => del(k)}><Trash2 size={14} /></button></td>
           </tr>))}</tbody></table>)}
@@ -63,7 +63,7 @@ export default function McpKeys({ gwId, tools, slug }: { gwId: number; tools: st
             <div className="rounded-md border border-[#d1a553]/30 bg-[#d1a553]/10 p-3 text-sm text-[#e6c27a]">This is the only time the key is shown. Store it somewhere safe.</div>
             <div className="mono flex items-center justify-between gap-2 rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs"><span className="break-all">{created.key}</span>
               <button className="btn !p-1.5" onClick={() => navigator.clipboard?.writeText(created.key)}><Copy size={14} /></button></div>
-            <pre className="mono scroll-thin overflow-x-auto rounded-md bg-black/40 p-3 text-[11px] text-[#9fb0ff]">{`claude mcp add --transport http ${slug} ${location.origin}/mcp/${slug} \\\n  --header "Authorization: Bearer ${created.key}"`}</pre>
+            <pre className="mono scroll-thin overflow-x-auto rounded-md bg-black/40 p-3 text-[11px] text-[#a79cff]">{`claude mcp add --transport http ${slug} ${location.origin}/mcp/${slug} \\\n  --header "Authorization: Bearer ${created.key}"`}</pre>
             <div className="flex justify-end"><button className="btn primary" onClick={() => setCreated(null)}>Done</button></div>
           </div>
         </Modal>

@@ -66,36 +66,36 @@ export default function Filters() {
           <button className="btn primary" onClick={() => setEditF(blankFilter())}><Plus size={16} /> New filter</button></>} />
       {err && <div className="mb-4 rounded-md border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-300">{err}</div>}
       {note && <div className="mb-4 rounded-md border border-emerald-400/30 bg-emerald-400/10 p-3 text-sm text-emerald-300">{note}</div>}
-      <p className="mb-4 text-xs text-[#6b7196]">Built-in presets cover national IDs, tax and phone numbers of 10 countries and GDPR sensitive data. Number formats with a checksum are only flagged when the checksum is valid. Keyword filters for GDPR categories are an approximation — they miss paraphrases and flag some harmless text. Presets are ordinary filters: edit, duplicate or delete them freely.</p>
+      <p className="mb-4 text-xs text-[#787884]">Built-in presets cover national IDs, tax and phone numbers of 10 countries and GDPR sensitive data. Number formats with a checksum are only flagged when the checksum is valid. Keyword filters for GDPR categories are an approximation — they miss paraphrases and flag some harmless text. Presets are ordinary filters: edit, duplicate or delete them freely.</p>
 
       <Tabs items={[["filters", `Filters (${data.filters.length})`], ["groups", `Groups (${data.groups.length})`]]} value={tab} onChange={(k) => setTab(k as "filters" | "groups")} />
 
       {tab === "filters" && <>
         <div className="mb-4 flex flex-wrap gap-2">
-          <div className="relative"><Search size={14} className="absolute left-3 top-3 text-[#6b7196]" /><input className="input !pl-8" placeholder="Search name or pattern" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+          <div className="relative"><Search size={14} className="absolute left-3 top-3 text-[#787884]" /><input className="input !pl-8" placeholder="Search name or pattern" value={q} onChange={(e) => setQ(e.target.value)} /></div>
           <select className="input !w-auto" value={groupFilter} onChange={(e) => setGroupFilter(e.target.value)}>
             <option value="">All groups</option><option value="none">Not in any group</option>{data.groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}</select>
         </div>
         {data.filters.length === 0 ? <Empty>No content filters yet. Create one, then select it on a gateway model under “Safety &amp; guardrails”.</Empty> : (
           <div className="card overflow-x-auto">
             <table className="w-full text-sm">
-              <thead><tr className="text-left text-xs uppercase tracking-wider text-[#6b7196]">{["On", "Name", "Pattern", "Applies to", "Action", "Groups", "Used by", ""].map((h) => <th key={h} className="px-3 py-3 font-medium">{h}</th>)}</tr></thead>
+              <thead><tr className="text-left text-xs uppercase tracking-wider text-[#787884]">{["On", "Name", "Pattern", "Applies to", "Action", "Groups", "Used by", ""].map((h) => <th key={h} className="px-3 py-3 font-medium">{h}</th>)}</tr></thead>
               <tbody>
                 {shown.map((f) => (
                   <tr key={f.id} className="border-t border-white/5 hover:bg-white/[0.02]">
                     <td className="px-3 py-2"><input type="checkbox" checked={f.enabled} onChange={() => toggle(f)} title="Disabled filters are skipped everywhere" /></td>
-                    <td className="px-3 py-2"><div className="font-medium" style={{ opacity: f.enabled ? 1 : 0.5 }}>{f.name}</div>{f.description && <div className="text-xs text-[#6b7196]">{f.description}</div>}</td>
-                    <td className="px-3 py-2 text-xs"><div className="mono max-w-[360px] truncate text-[#9fb0ff]" title={f.pattern}>{f.pattern}</div>
+                    <td className="px-3 py-2"><div className="font-medium" style={{ opacity: f.enabled ? 1 : 0.5 }}>{f.name}</div>{f.description && <div className="text-xs text-[#787884]">{f.description}</div>}</td>
+                    <td className="px-3 py-2 text-xs"><div className="mono max-w-[360px] truncate text-[#a79cff]" title={f.pattern}>{f.pattern}</div>
                       {f.validator && <span className="mt-1 inline-flex items-center gap-1 text-[#5fb585]" title="Only structurally valid numbers match"><BadgeCheck size={12} /> checksum: {data.validators.find((v) => v.name === f.validator)?.label || f.validator}</span>}</td>
-                    <td className="px-3 py-2"><Chip color="#8a92a6">{STAGES[f.stage]}</Chip></td>
+                    <td className="px-3 py-2"><Chip color="#8e8e9a">{STAGES[f.stage]}</Chip></td>
                     <td className="px-3 py-2"><Chip color={f.action === "block" ? "#d9776f" : "#d1a553"}>{f.action === "block" ? "Block" : "Redact"}</Chip></td>
-                    <td className="px-3 py-2"><div className="flex flex-wrap gap-1">{f.group_ids.length ? f.group_ids.map((id: number) => <Chip key={id} color="#7d9be0">{groupName(id)}</Chip>) : <span className="text-[#6b7196]">—</span>}</div></td>
-                    <td className="px-3 py-2 text-xs text-[#8b91b5]" title={f.used_by.join("\n")}>{f.used_by.length ? `${f.used_by.length} model${f.used_by.length > 1 ? "s" : ""}` : "—"}</td>
+                    <td className="px-3 py-2"><div className="flex flex-wrap gap-1">{f.group_ids.length ? f.group_ids.map((id: number) => <Chip key={id} color="#a79cff">{groupName(id)}</Chip>) : <span className="text-[#787884]">—</span>}</div></td>
+                    <td className="px-3 py-2 text-xs text-[#8e8e9a]" title={f.used_by.join("\n")}>{f.used_by.length ? `${f.used_by.length} model${f.used_by.length > 1 ? "s" : ""}` : "—"}</td>
                     <td className="px-3 py-2 text-right whitespace-nowrap"><button className="btn" onClick={() => setEditF(f)}><Pencil size={14} /></button> <button className="btn danger" onClick={() => remove("filters", f)}><Trash2 size={14} /></button></td>
                   </tr>))}
               </tbody>
             </table>
-            {shown.length === 0 && <div className="p-6 text-center text-sm text-[#8b91b5]">No filters match.</div>}
+            {shown.length === 0 && <div className="p-6 text-center text-sm text-[#8e8e9a]">No filters match.</div>}
           </div>)}
       </>}
 
@@ -104,11 +104,11 @@ export default function Filters() {
           {data.groups.map((g) => (
             <div key={g.id} className="card card-pad">
               <div className="flex items-start justify-between gap-3">
-                <div><div className="text-base font-semibold">{g.name}</div>{g.description && <div className="mt-1 text-xs text-[#8b91b5]">{g.description}</div>}</div>
+                <div><div className="text-base font-semibold">{g.name}</div>{g.description && <div className="mt-1 text-xs text-[#8e8e9a]">{g.description}</div>}</div>
                 <div className="flex gap-2"><button className="btn" onClick={() => setEditG(g)}><Pencil size={14} /></button><button className="btn danger" onClick={() => remove("groups", g)}><Trash2 size={14} /></button></div>
               </div>
-              <div className="mt-3 flex flex-wrap gap-1">{g.filter_ids.length ? g.filter_ids.map((id: number) => <Chip key={id} color="#9aa0c3">{filterName(id)}</Chip>) : <span className="text-xs text-[#6b7196]">Empty group</span>}</div>
-              <div className="mt-3 text-xs text-[#6b7196]">{g.used_by.length ? `Used by: ${g.used_by.join(", ")}` : "Not used by any gateway model"}</div>
+              <div className="mt-3 flex flex-wrap gap-1">{g.filter_ids.length ? g.filter_ids.map((id: number) => <Chip key={id} color="#a2a2ac">{filterName(id)}</Chip>) : <span className="text-xs text-[#787884]">Empty group</span>}</div>
+              <div className="mt-3 text-xs text-[#787884]">{g.used_by.length ? `Used by: ${g.used_by.join(", ")}` : "Not used by any gateway model"}</div>
             </div>))}
         </div>))}
 
@@ -136,14 +136,14 @@ function FilterEditor({ value, groups, validators, onClose, onSaved }: { value: 
         <div><label className="lbl">Name</label><input className="input" value={f.name} onChange={(e) => set({ name: e.target.value })} placeholder="Project Falcon" /></div>
         <div><label className="lbl">Description (optional)</label><input className="input" value={f.description} onChange={(e) => set({ description: e.target.value })} /></div>
         <div className="md:col-span-2"><label className="lbl">Regular expression (case-insensitive)</label><input className="input mono" value={f.pattern} onChange={(e) => set({ pattern: e.target.value })} placeholder="project\s+falcon" />
-          <p className="mt-1 text-xs text-[#6b7196]">Python regex syntax. It must not match empty text.</p></div>
+          <p className="mt-1 text-xs text-[#787884]">Python regex syntax. It must not match empty text.</p></div>
         <div className="md:col-span-2"><label className="lbl">Validation (optional)</label>
           <select className="input" value={f.validator || ""} onChange={(e) => set({ validator: e.target.value })}><option value="">None — every regex match counts</option>{validators.map((v) => <option key={v.name} value={v.name}>{v.label}</option>)}</select>
-          <p className="mt-1 text-xs text-[#6b7196]">A match only counts if the number passes this checksum. If the pattern has a group named <span className="mono">(?P&lt;n&gt;…)</span>, that group is checked instead of the whole match.</p></div>
+          <p className="mt-1 text-xs text-[#787884]">A match only counts if the number passes this checksum. If the pattern has a group named <span className="mono">(?P&lt;n&gt;…)</span>, that group is checked instead of the whole match.</p></div>
         <div><label className="lbl">Applies to</label><select className="input" value={f.stage} onChange={(e) => set({ stage: e.target.value })}>{Object.entries(STAGES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></div>
         <div><label className="lbl">When it matches</label><select className="input" value={f.action} onChange={(e) => set({ action: e.target.value })}><option value="block">Block the request / answer</option><option value="redact">Replace the text with [FILTERED]</option></select></div>
         <div className="md:col-span-2"><label className="lbl">Groups</label>
-          {groups.length === 0 ? <p className="text-xs text-[#6b7196]">No groups yet — create one with “New group”.</p> :
+          {groups.length === 0 ? <p className="text-xs text-[#787884]">No groups yet — create one with “New group”.</p> :
             <div className="flex flex-wrap gap-3">{groups.map((g) => <label key={g.id} className="flex cursor-pointer items-center gap-2 text-sm"><input type="checkbox" checked={f.group_ids.includes(g.id)}
               onChange={(e) => set({ group_ids: e.target.checked ? [...f.group_ids, g.id] : f.group_ids.filter((x: number) => x !== g.id) })} /> {g.name}</label>)}</div>}</div>
         <label className="flex cursor-pointer items-center gap-3 text-sm md:col-span-2"><input type="checkbox" checked={f.enabled} onChange={(e) => set({ enabled: e.target.checked })} /> Enabled</label>
@@ -173,9 +173,9 @@ function GroupEditor({ value, filters, onClose, onSaved }: { value: any; filters
         <div><label className="lbl">Name</label><input className="input" value={g.name} onChange={(e) => setG({ ...g, name: e.target.value })} placeholder="Company secrets" /></div>
         <div><label className="lbl">Description (optional)</label><input className="input" value={g.description} onChange={(e) => setG({ ...g, description: e.target.value })} /></div>
         <div><label className="lbl">Filters in this group</label>
-          {filters.length === 0 ? <p className="text-xs text-[#6b7196]">No filters yet — create some first.</p> :
+          {filters.length === 0 ? <p className="text-xs text-[#787884]">No filters yet — create some first.</p> :
             <div className="max-h-64 space-y-1 overflow-y-auto rounded-md border border-white/[0.08] p-2">{filters.map((f) => <label key={f.id} className="flex cursor-pointer items-center gap-2 text-sm"><input type="checkbox" checked={g.filter_ids.includes(f.id)}
-              onChange={(e) => setG({ ...g, filter_ids: e.target.checked ? [...g.filter_ids, f.id] : g.filter_ids.filter((x: number) => x !== f.id) })} /> {f.name} <span className="mono text-xs text-[#6b7196]">{f.pattern}</span></label>)}</div>}</div>
+              onChange={(e) => setG({ ...g, filter_ids: e.target.checked ? [...g.filter_ids, f.id] : g.filter_ids.filter((x: number) => x !== f.id) })} /> {f.name} <span className="mono text-xs text-[#787884]">{f.pattern}</span></label>)}</div>}</div>
       </div>
       <div className="mt-5 flex justify-end gap-2"><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={save}>Save</button></div>
     </Modal>

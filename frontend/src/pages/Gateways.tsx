@@ -46,8 +46,8 @@ export default function Gateways({ kind = "router" }: { kind?: "router" | "counc
           <div key={g.id} className="card card-pad">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <Link to={g.kind === "council" ? `/gateways/${g.id}/edit` : `/gateways/${g.id}`} className="text-base font-semibold hover:text-[#9fb0ff]">{g.name}</Link>
-                <div className="mt-1 text-xs text-[#8b91b5]">{g.kind === "council" ? <><span className="chip mr-1" style={{ color: "#b79cf0", background: "#b79cf01f" }}>Council</span>{g.council?.councillors?.length || 0} councillors{g.council?.review_enabled === false ? "" : " · peer review"} · chairman {gwName(g, g.council?.chairman)}</> : <>{STRATEGIES[g.strategy]} · queue {g.queue_timeout}s</>} · {g.has_keys ? "API key required" : "open access"}</div>
+                <Link to={g.kind === "council" ? `/gateways/${g.id}/edit` : `/gateways/${g.id}`} className="text-base font-semibold hover:text-[#a79cff]">{g.name}</Link>
+                <div className="mt-1 text-xs text-[#8e8e9a]">{g.kind === "council" ? <><span className="chip mr-1" style={{ color: "#b79cf0", background: "#b79cf01f" }}>Council</span>{g.council?.councillors?.length || 0} councillors{g.council?.review_enabled === false ? "" : " · peer review"} · chairman {gwName(g, g.council?.chairman)}</> : <>{STRATEGIES[g.strategy]} · queue {g.queue_timeout}s</>} · {g.has_keys ? "API key required" : "open access"}</div>
               </div>
               <div className="flex flex-wrap justify-end gap-2">
                 <button className="btn whitespace-nowrap" onClick={() => setTesting(g)}><FlaskConical size={15} /> Test</button>
@@ -57,7 +57,7 @@ export default function Gateways({ kind = "router" }: { kind?: "router" | "counc
                 <button className="btn danger" onClick={() => del(g)}><Trash2 size={15} /></button>
               </div>
             </div>
-            <div className="mono mt-4 flex items-center justify-between gap-2 rounded-md border border-white/5 bg-black/30 px-3 py-2 text-xs text-[#9fb0ff]">
+            <div className="mono mt-4 flex items-center justify-between gap-2 rounded-md border border-white/5 bg-black/30 px-3 py-2 text-xs text-[#a79cff]">
               <span className="truncate">{gwUrl(g.slug)}</span>
               <button onClick={() => navigator.clipboard?.writeText(gwUrl(g.slug))} title="Copy"><Copy size={14} /></button>
             </div>
@@ -69,11 +69,11 @@ export default function Gateways({ kind = "router" }: { kind?: "router" | "counc
                     <div className="flex flex-wrap gap-1">{m.capabilities.map((c: string) => <CapChip key={c} cap={c} />)}</div>
                   </div>
                   {g.kind === "council"
-                    ? <div className="mt-1 text-xs text-[#8b91b5]">{(g.council?.councillors || []).map((r: any) => gwName(g, r)).join(", ")}</div>
-                    : <div className="mt-1 text-xs text-[#8b91b5]">{m.members.length} upstream: {m.members.map((x: any) => `${x.upstream_id}@${x.endpoint_name}`).join(", ")}</div>}
+                    ? <div className="mt-1 text-xs text-[#8e8e9a]">{(g.council?.councillors || []).map((r: any) => gwName(g, r)).join(", ")}</div>
+                    : <div className="mt-1 text-xs text-[#8e8e9a]">{m.members.length} upstream: {m.members.map((x: any) => `${x.upstream_id}@${x.endpoint_name}`).join(", ")}</div>}
                 </div>
               ))}
-              {g.models.length === 0 && <div className="text-sm text-[#8b91b5]">No models exposed yet.</div>}
+              {g.models.length === 0 && <div className="text-sm text-[#8e8e9a]">No models exposed yet.</div>}
             </div>
           </div>
         ))}

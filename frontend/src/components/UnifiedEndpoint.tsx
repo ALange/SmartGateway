@@ -67,10 +67,10 @@ export default function UnifiedEndpoint({ onChange }: { onChange?: (v: any) => v
     <div className="card card-pad mb-5">
       <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
         <h3 className="flex items-center gap-2 text-base font-semibold"><Layers size={17} /> Unified endpoint</h3>
-        <span className="chip" style={enabled ? { color: "#5fb585", background: "#5fb58522" } : { color: "#8a92a6", background: "#8a92a622" }}>{enabled ? "Enabled" : "Disabled"}</span>
+        <span className="chip" style={enabled ? { color: "#5fb585", background: "#5fb58522" } : { color: "#8e8e9a", background: "#8e8e9a22" }}>{enabled ? "Enabled" : "Disabled"}</span>
       </div>
-      <p className="mb-5 max-w-3xl text-sm text-[#8a92a6]">
-        Offer several gateways through one OpenAI-compatible URL. Clients pick a gateway by its <b className="font-medium text-[#c9cfdd]">name</b> in the <span className="mono">model</span> field.
+      <p className="mb-5 max-w-3xl text-sm text-[#8e8e9a]">
+        Offer several gateways through one OpenAI-compatible URL. Clients pick a gateway by its <b className="font-medium text-[#c8c8d0]">name</b> in the <span className="mono">model</span> field.
         Each gateway keeps its own routing, cache, limits and API keys: use the gateway's key as the Bearer token (open gateways need none).
       </p>
 
@@ -85,9 +85,9 @@ export default function UnifiedEndpoint({ onChange }: { onChange?: (v: any) => v
         <button className="btn whitespace-nowrap" onClick={copy}>{copied ? <Check size={15} /> : <Copy size={15} />} {copied ? "Copied" : "Copy"}</button>
       </div>
 
-      <label className="lbl">Gateways to expose <span className="font-normal normal-case text-[#6b7196]">· untick a gateway to stop serving it here; models disabled inside a gateway are skipped automatically</span></label>
+      <label className="lbl">Gateways to expose <span className="font-normal normal-case text-[#787884]">· untick a gateway to stop serving it here; models disabled inside a gateway are skipped automatically</span></label>
       {rows.length === 0 ? (
-        <div className="rounded-md border border-white/5 p-4 text-sm text-[#8a92a6]">No gateways yet. <Link to="/gateways/new" className="text-[#7d9be0] hover:underline">Create one</Link> first.</div>
+        <div className="rounded-md border border-white/5 p-4 text-sm text-[#8e8e9a]">No gateways yet. <Link to="/gateways/new" className="text-[#a79cff] hover:underline">Create one</Link> first.</div>
       ) : (
         <div className="divide-y divide-white/5 rounded-md border border-white/5">
           {rows.map((r) => (
@@ -95,14 +95,14 @@ export default function UnifiedEndpoint({ onChange }: { onChange?: (v: any) => v
               <label className="flex min-w-[220px] flex-1 cursor-pointer items-center gap-3 text-sm">
                 <input type="checkbox" checked={r.exposed} disabled={r.models.length === 0} onChange={(e) => patch(r.id, { exposed: e.target.checked })} />
                 <span className="font-medium">{r.name}</span>
-                <span className="mono text-xs text-[#6b7196]">{r.slug}</span>
+                <span className="mono text-xs text-[#787884]">{r.slug}</span>
                 {r.has_keys
                   ? <span className="chip" style={{ color: "#c2a05a", background: "#c2a05a22" }}><Lock size={11} /> API key</span>
-                  : <span className="chip" style={{ color: "#8a92a6", background: "#8a92a622" }}>Open</span>}
+                  : <span className="chip" style={{ color: "#8e8e9a", background: "#8e8e9a22" }}>Open</span>}
               </label>
-              {r.models.length === 0 && <span className="text-xs text-[#6b7196]">no enabled models</span>}
+              {r.models.length === 0 && <span className="text-xs text-[#787884]">no enabled models</span>}
               {r.exposed && r.models.length > 1 && (
-                <div className="flex items-center gap-2 text-xs text-[#8a92a6]">
+                <div className="flex items-center gap-2 text-xs text-[#8e8e9a]">
                   <span>Default model</span>
                   <select className="input !w-auto !py-1" value={r.model || ""} onChange={(e) => patch(r.id, { model: e.target.value })}>
                     {r.models.map((m) => <option key={m} value={m}>{m}</option>)}
@@ -110,9 +110,9 @@ export default function UnifiedEndpoint({ onChange }: { onChange?: (v: any) => v
                 </div>
               )}
               {r.exposed && (
-                <div className="flex w-full flex-wrap items-center gap-1.5 pl-7 text-xs text-[#6b7196]">
+                <div className="flex w-full flex-wrap items-center gap-1.5 pl-7 text-xs text-[#787884]">
                   model name{r.models.length > 1 ? "s" : ""}:
-                  {(dirty ? [r.name, ...split(r.aliases_text), ...(r.models.length > 1 ? r.models.map((m) => `${r.name}/${m}`) : [])] : r.names).map((n) => <span key={n} className="chip mono" style={{ color: "#9fb0e8", background: "#3b6fd822" }}>{n}</span>)}
+                  {(dirty ? [r.name, ...split(r.aliases_text), ...(r.models.length > 1 ? r.models.map((m) => `${r.name}/${m}`) : [])] : r.names).map((n) => <span key={n} className="chip mono" style={{ color: "#a79cff", background: "#6c5ce722" }}>{n}</span>)}
                   <input className="input mono !w-auto min-w-[220px] flex-1 !py-1 text-xs" value={r.aliases_text || ""} placeholder="also exposed as (optional): gpt-4o, claude-sonnet"
                     title="Extra names clients can use for this gateway's default model" onChange={(e) => patch(r.id, { aliases_text: e.target.value })} />
                 </div>
@@ -121,10 +121,10 @@ export default function UnifiedEndpoint({ onChange }: { onChange?: (v: any) => v
           ))}
         </div>
       )}
-      <p className="mt-2 text-xs text-[#6b7196]">A gateway with several public models is reachable as <span className="mono">name</span> (its default model) and as <span className="mono">name/model</span>. If two gateways share a name, the slug is appended to the second.</p>
+      <p className="mt-2 text-xs text-[#787884]">A gateway with several public models is reachable as <span className="mono">name</span> (its default model) and as <span className="mono">name/model</span>. If two gateways share a name, the slug is appended to the second.</p>
 
       <label className="lbl mt-6 flex items-center gap-1.5"><Box size={12} /> Models</label>
-      <p className="mb-3 max-w-3xl text-xs text-[#6b7196]">Expose a single model of one of your endpoints directly, without a gateway around it. Clients use the name you give it in the <span className="mono">model</span> field.</p>
+      <p className="mb-3 max-w-3xl text-xs text-[#787884]">Expose a single model of one of your endpoints directly, without a gateway around it. Clients use the name you give it in the <span className="mono">model</span> field.</p>
       {dModels.length > 0 && (
         <div className="mb-3 divide-y divide-white/5 rounded-md border border-white/5">
           {dModels.map((m) => (
@@ -132,7 +132,7 @@ export default function UnifiedEndpoint({ onChange }: { onChange?: (v: any) => v
               <input className="input mono !w-auto min-w-[200px] flex-1 !py-1" value={m.name} maxLength={120} onChange={(e) => { setDModels(dModels.map((x) => (x.model_id === m.model_id ? { ...x, name: e.target.value } : x))); setDirty(true); }} />
               <input className="input mono !w-auto min-w-[200px] flex-1 !py-1 text-xs" value={m.aliases_text || ""} placeholder="also exposed as (optional): gpt-4o, claude-sonnet"
                 title="Extra names clients can use for this model" onChange={(e) => { setDModels(dModels.map((x) => (x.model_id === m.model_id ? { ...x, aliases_text: e.target.value } : x))); setDirty(true); }} />
-              <span className="text-xs text-[#6b7196]"><span className="mono">{m.upstream_id}</span> @ {m.endpoint}</span>
+              <span className="text-xs text-[#787884]"><span className="mono">{m.upstream_id}</span> @ {m.endpoint}</span>
               <label className="btn cursor-pointer !px-2 !py-1" title="Turn the model off without removing it: requests for it get 404 and it is hidden from /models"><input type="checkbox" checked={!m.disabled} onChange={(e) => { setDModels(dModels.map((x) => (x.model_id === m.model_id ? { ...x, disabled: !e.target.checked } : x))); setDirty(true); }} /> Enabled</label>
               <button className="btn danger !px-2 !py-1" title="Remove" onClick={() => { setDModels(dModels.filter((x) => x.model_id !== m.model_id)); setDirty(true); }}><X size={14} /></button>
             </div>))}
@@ -147,7 +147,7 @@ export default function UnifiedEndpoint({ onChange }: { onChange?: (v: any) => v
       </div>
 
       <label className="lbl mt-6 flex items-center gap-1.5"><KeyRound size={12} /> API keys</label>
-      <p className="mb-3 max-w-3xl text-xs text-[#6b7196]">
+      <p className="mb-3 max-w-3xl text-xs text-[#787884]">
         {keys.length === 0
           ? "No key set: callers authenticate against each gateway (open gateways need none, protected ones need their own key). Create a key to require authentication for the whole endpoint."
           : "A key is required. A unified key works for every exposed gateway, so clients don't need each gateway's own key. A gateway's own key still works for that gateway only."}
@@ -165,8 +165,8 @@ export default function UnifiedEndpoint({ onChange }: { onChange?: (v: any) => v
           {keys.map((k) => (
             <div key={k.id} className="flex items-center gap-4 px-3.5 py-2.5 text-sm">
               <span className="min-w-[140px] font-medium">{k.name}</span>
-              <span className="mono text-xs text-[#8a92a6]">{k.prefix}</span>
-              <span className="flex-1 text-xs text-[#6b7196]">created {new Date(k.created_at * 1000).toLocaleDateString()}</span>
+              <span className="mono text-xs text-[#8e8e9a]">{k.prefix}</span>
+              <span className="flex-1 text-xs text-[#787884]">created {new Date(k.created_at * 1000).toLocaleDateString()}</span>
               <button className="btn danger !px-2 !py-1" title="Delete key" onClick={() => delKey(k)}><Trash2 size={14} /></button>
             </div>))}
         </div>
@@ -178,7 +178,7 @@ export default function UnifiedEndpoint({ onChange }: { onChange?: (v: any) => v
       {keyErr && <div className="mt-2 text-sm text-red-300">{keyErr}</div>}
 
       {(exposed.length > 0 || dModels.length > 0) && (
-        <pre className="mono scroll-thin mt-5 overflow-x-auto rounded-md bg-black/40 p-3 text-[11px] leading-relaxed text-[#9fb0ff]">{`curl ${url}/chat/completions \\
+        <pre className="mono scroll-thin mt-5 overflow-x-auto rounded-md bg-black/40 p-3 text-[11px] leading-relaxed text-[#a79cff]">{`curl ${url}/chat/completions \\
   -H "Authorization: Bearer <${keys.length ? "unified API key" : "gateway API key, if the gateway has one"}>" \\
   -H "Content-Type: application/json" \\
   -d '{"model":"${firstName}",

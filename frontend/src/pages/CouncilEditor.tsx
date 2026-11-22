@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { Plus, Save, Trash2, Users } from "lucide-react";
 import { api } from "../api";
 import { PageHeader } from "../components/ui";
@@ -101,8 +101,7 @@ export default function CouncilEditor() {
 
   return (
     <div className="fadein">
-      <Link to="/councils" className="mb-2 inline-block text-sm text-[#8a92a6] hover:text-white">← Gateways</Link>
-      <PageHeader title={id ? "Edit council" : "New council"} sub="Several models answer, review each other anonymously, and a chairman writes the final answer."
+      <PageHeader back="/councils" crumb={["Gateways"]} title={id ? "Edit council" : "New council"} sub="Several models answer, review each other anonymously, and a chairman writes the final answer."
         actions={<><button className="btn" onClick={() => nav(-1)}>Cancel</button><button className="btn primary" onClick={save}><Save size={16} /> Save council</button></>} />
       {err && <div className="mb-4 rounded-md border border-[#d9776f]/40 bg-[#d9776f]/10 p-3 text-sm text-[#e8a39d]">{err}</div>}
       <div className="space-y-5">
@@ -115,18 +114,18 @@ export default function CouncilEditor() {
         <div className="card card-pad">
           <div className="mb-1 flex items-center justify-between"><h3 className="flex items-center gap-2 text-base font-semibold"><Users size={17} /> Stage 1 · Councillors</h3>
             <button className="btn" disabled={f.councillors.length >= 8} onClick={() => set({ councillors: [...f.councillors, null] })}><Plus size={15} /> Add</button></div>
-          <p className="mb-3 text-sm text-[#8b91b5]">Each councillor answers the question on its own. Pick an endpoint model directly, or the public model of an existing gateway (its routing, failover, caching and guardrails then apply to the call).</p>
+          <p className="mb-3 text-sm text-[#8e8e9a]">Each councillor answers the question on its own. Pick an endpoint model directly, or the public model of an existing gateway (its routing, failover, caching and guardrails then apply to the call).</p>
           <div className="space-y-2">
             {f.councillors.map((r: Role | null, i: number) => (
               <div key={i} className="flex items-center gap-2">
-                <span className="w-6 text-sm text-[#6b7196]">{i + 1}</span>
+                <span className="w-6 text-sm text-[#787884]">{i + 1}</span>
                 <div className="flex-1"><RolePicker value={r} onChange={(v) => setList("councillors", i, v)} gws={gws} eps={eps} selfId={id ? +id : undefined} placeholder="Choose a gateway model…" /></div>
                 <button className="btn danger" onClick={() => set({ councillors: f.councillors.filter((_: any, j: number) => j !== i) })}><Trash2 size={15} /></button>
               </div>))}
           </div>
           <div className="mt-4 grid gap-4 md:grid-cols-2">
             <div><label className="lbl">Minimum answers needed</label><input type="number" min={1} max={8} className="input" value={f.min_answers} onChange={(e) => set({ min_answers: e.target.value })} />
-              <p className="mt-1 text-xs text-[#6b7196]">If fewer councillors answer (errors, timeouts), the request fails with 502.</p></div>
+              <p className="mt-1 text-xs text-[#787884]">If fewer councillors answer (errors, timeouts), the request fails with 502.</p></div>
             <div><label className="lbl">Timeout per call (s)</label><input type="number" min={5} max={900} className="input" value={f.stage_timeout_s} onChange={(e) => set({ stage_timeout_s: e.target.value })} /></div>
           </div>
         </div>
@@ -134,7 +133,7 @@ export default function CouncilEditor() {
         <div className="card card-pad">
           <div className="mb-1 flex items-center justify-between"><h3 className="text-base font-semibold">Stage 2 · Peer review</h3>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.review_enabled} onChange={(e) => set({ review_enabled: e.target.checked })} /> Enabled</label></div>
-          <p className="mb-3 text-sm text-[#8b91b5]">Each reviewer gets the other answers as “Response A, B, C…” in random order, with no model names, and ranks them by accuracy and insight. A councillor never reviews its own answer.</p>
+          <p className="mb-3 text-sm text-[#8e8e9a]">Each reviewer gets the other answers as “Response A, B, C…” in random order, with no model names, and ranks them by accuracy and insight. A councillor never reviews its own answer.</p>
           {f.review_enabled && (<>
             <label className="mb-2 flex items-center gap-2 text-sm"><input type="checkbox" checked={f.separate} onChange={(e) => set({ separate: e.target.checked, reviewers: e.target.checked && f.reviewers.length === 0 ? [null] : f.reviewers })} /> Use different reviewers instead of the councillors</label>
             {f.separate && (
@@ -152,7 +151,7 @@ export default function CouncilEditor() {
 
         <div className="card card-pad">
           <h3 className="mb-1 text-base font-semibold">Stage 3 · Chairman</h3>
-          <p className="mb-3 text-sm text-[#8b91b5]">Gets every answer, the reviews and the ranking, and writes the one answer the client sees. If the chairman fails, the best-ranked answer is returned instead.</p>
+          <p className="mb-3 text-sm text-[#8e8e9a]">Gets every answer, the reviews and the ranking, and writes the one answer the client sees. If the chairman fails, the best-ranked answer is returned instead.</p>
           <RolePicker value={f.chairman} onChange={(v) => set({ chairman: v })} gws={gws} eps={eps} selfId={id ? +id : undefined} placeholder="Choose the chairman model…" />
         </div>
 
@@ -160,34 +159,34 @@ export default function CouncilEditor() {
           <h3 className="mb-3 text-base font-semibold">Behaviour</h3>
           <div className="grid gap-3 md:grid-cols-2">
             <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={f.stream_progress} onChange={(e) => set({ stream_progress: e.target.checked })} />
-              <span>Stream progress<span className="block text-xs text-[#6b7196]">Streaming clients receive “Stage 1: 2/3 answers in…” lines as reasoning text while the council works. Off: nothing is sent until the chairman starts.</span></span></label>
+              <span>Stream progress<span className="block text-xs text-[#787884]">Streaming clients receive “Stage 1: 2/3 answers in…” lines as reasoning text while the council works. Off: nothing is sent until the chairman starts.</span></span></label>
             <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={f.details_default} onChange={(e) => set({ details_default: e.target.checked })} />
-              <span>Always include details<span className="block text-xs text-[#6b7196]">Adds an <span className="mono">sg_council</span> field (all answers, reviews, ranking) to every response. Clients can also ask per request with the header <span className="mono">X-SG-Council-Details: 1</span>.</span></span></label>
+              <span>Always include details<span className="block text-xs text-[#787884]">Adds an <span className="mono">sg_council</span> field (all answers, reviews, ranking) to every response. Clients can also ask per request with the header <span className="mono">X-SG-Council-Details: 1</span>.</span></span></label>
             <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={f.store_runs} onChange={(e) => set({ store_runs: e.target.checked })} />
               <span>Store runs<span className="block text-xs text-[#d1a553]">Keeps each question, every answer and review so you can open them from the Logs. This stores prompts and answers, which the request log never does. Set a retention period in Settings.</span></span></label>
             <div><label className="lbl">Max tokens per call (optional)</label><input type="number" min={1} className="input" value={f.stage_max_tokens} onChange={(e) => set({ stage_max_tokens: e.target.value })} placeholder="no cap" /></div>
           </div>
-          <details className="mt-4"><summary className="cursor-pointer text-sm text-[#9fb0ff]">Advanced: prompts</summary>
+          <details className="mt-4"><summary className="cursor-pointer text-sm text-[#a79cff]">Advanced: prompts</summary>
             <div className="mt-3 grid gap-4 md:grid-cols-2">
               <div><label className="lbl">Review prompt</label><textarea className="input mono text-xs" rows={10} value={f.review_prompt} onChange={(e) => set({ review_prompt: e.target.value })} placeholder={prompts.review} />
-                <p className="mt-1 text-xs text-[#6b7196]">{REVIEW_HINT} Empty = default (shown greyed).</p></div>
+                <p className="mt-1 text-xs text-[#787884]">{REVIEW_HINT} Empty = default (shown greyed).</p></div>
               <div><label className="lbl">Chairman prompt</label><textarea className="input mono text-xs" rows={10} value={f.chairman_prompt} onChange={(e) => set({ chairman_prompt: e.target.value })} placeholder={prompts.chairman} />
-                <p className="mt-1 text-xs text-[#6b7196]">{CHAIR_HINT} Empty = default.</p></div>
+                <p className="mt-1 text-xs text-[#787884]">{CHAIR_HINT} Empty = default.</p></div>
             </div>
           </details>
         </div>
 
-        <div className="card card-pad text-sm text-[#b8bddb]">
+        <div className="card card-pad text-sm text-[#c8c8d0]">
           <div className="font-semibold">Cost and latency</div>
           <p className="mt-1">Each request makes <b>{calls}</b> model calls ({n} answers{f.review_enabled ? ` + ${f.separate ? f.reviewers.filter(Boolean).length : n} reviews` : ""} + 1 chairman), one stage after the other, so the reply takes roughly the sum of the slowest call in each stage.</p>
-          <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-[#8b91b5]">
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-[#8e8e9a]">
             <li>Guardrails (PII, content filters) run on picked gateways, once per call. Endpoint models are sent the prompt as is.</li>
             <li>Council calls skip the picked gateways' API-key checks. The council's own API keys protect the council. Endpoint models are called directly: pick a gateway instead when you want guardrails or caching on that role.</li>
             <li>Only chat is supported: no tools or JSON-mode.</li>
           </ul>
         </div>
 
-        {id ? <KeysPanel gwId={+id} slug={f.slug} models={[f.model]} /> : <p className="text-sm text-[#8b91b5]">Save the council first to create API keys for it.</p>}
+        {id ? <KeysPanel gwId={+id} slug={f.slug} models={[f.model]} /> : <p className="text-sm text-[#8e8e9a]">Save the council first to create API keys for it.</p>}
       </div>
     </div>
   );

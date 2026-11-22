@@ -31,11 +31,11 @@ function KeyForm({ gwId, models, init, onClose, onDone }: { gwId: number; models
           {field("daily_token_quota", "Daily token quota")}{field("monthly_token_quota", "Monthly token quota")}
         </div>
         <div>
-          <label className="lbl">Allowed models <span className="normal-case text-[#6b7196]">(none selected = all)</span></label>
+          <label className="lbl">Allowed models <span className="normal-case text-[#787884]">(none selected = all)</span></label>
           <div className="flex flex-wrap gap-2">{models.map((m) => (
             <label key={m} className="btn cursor-pointer !py-1"><input type="checkbox" checked={f.allowed_models.includes(m)}
               onChange={(e) => setF({ ...f, allowed_models: e.target.checked ? [...f.allowed_models, m] : f.allowed_models.filter((x: string) => x !== m) })} /> <span className="mono">{m}</span></label>))}
-            {models.length === 0 && <span className="text-sm text-[#6b7196]">This gateway has no models yet.</span>}</div>
+            {models.length === 0 && <span className="text-sm text-[#787884]">This gateway has no models yet.</span>}</div>
         </div>
         {err && <div className="rounded-md border border-red-400/30 bg-red-400/10 p-2.5 text-sm text-red-300">{err}</div>}
         <div className="flex justify-end gap-2"><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" disabled={!f.name} onClick={save}>{init ? "Save" : "Create key"}</button></div>
@@ -58,23 +58,23 @@ export default function KeysPanel({ gwId, models, slug }: { gwId: number; models
       <div className="mb-3 flex items-center justify-between">
         <div>
           <h3 className="flex items-center gap-2 text-sm font-semibold"><KeyRound size={15} /> API keys</h3>
-          <p className="mt-1 text-xs text-[#8a92a6]">{keys.length === 0 ? "No keys: this gateway is open to anyone who can reach it. " : "Clients must send a key as Bearer token or x-api-key. "}Keys are stored hashed and shown only once.</p>
+          <p className="mt-1 text-xs text-[#8e8e9a]">{keys.length === 0 ? "No keys: this gateway is open to anyone who can reach it. " : "Clients must send a key as Bearer token or x-api-key. "}Keys are stored hashed and shown only once.</p>
         </div>
         <button className="btn primary" onClick={() => setForm({})}><Plus size={15} /> New key</button>
       </div>
       {keys.length > 0 && (
         <div className="overflow-x-auto scroll-thin"><table className="w-full text-sm">
-          <thead><tr className="text-left text-xs uppercase tracking-wider text-[#6b7196]">{["Name", "Key", "Limits", "Tokens today / quota", "Month / quota", "Req 24h", "Last used", "Active", ""].map((h) => <th key={h} className="pb-2 pr-3 font-medium">{h}</th>)}</tr></thead>
+          <thead><tr className="text-left text-xs uppercase tracking-wider text-[#787884]">{["Name", "Key", "Limits", "Tokens today / quota", "Month / quota", "Req 24h", "Last used", "Active", ""].map((h) => <th key={h} className="pb-2 pr-3 font-medium">{h}</th>)}</tr></thead>
           <tbody>{keys.map((k) => (
             <tr key={k.id} className="border-t border-white/5">
               <td className="py-2.5 pr-3 font-medium">{k.name}</td>
-              <td className="mono py-2.5 pr-3 text-xs text-[#8a92a6]">{k.key_prefix}</td>
-              <td className="py-2.5 pr-3 text-xs text-[#8a92a6]">{[k.rpm_limit && `${k.rpm_limit} rpm`, k.tpm_limit && `${fmt(k.tpm_limit)} tpm`, k.max_concurrent && `${k.max_concurrent} conc`, k.allowed_models?.length ? `${k.allowed_models.length} model(s)` : ""].filter(Boolean).join(" · ") || "none"}
+              <td className="mono py-2.5 pr-3 text-xs text-[#8e8e9a]">{k.key_prefix}</td>
+              <td className="py-2.5 pr-3 text-xs text-[#8e8e9a]">{[k.rpm_limit && `${k.rpm_limit} rpm`, k.tpm_limit && `${fmt(k.tpm_limit)} tpm`, k.max_concurrent && `${k.max_concurrent} conc`, k.allowed_models?.length ? `${k.allowed_models.length} model(s)` : ""].filter(Boolean).join(" · ") || "none"}
                 {k.expires_at ? ` · exp ${new Date(k.expires_at * 1000).toLocaleDateString()}` : ""}</td>
               <td className="py-2.5 pr-3">{pct(k.usage.day_tokens, k.daily_token_quota)}</td>
               <td className="py-2.5 pr-3">{pct(k.usage.month_tokens, k.monthly_token_quota)}</td>
               <td className="py-2.5 pr-3">{k.requests_24h}</td>
-              <td className="py-2.5 pr-3 text-xs text-[#8a92a6]">{k.last_used ? new Date(k.last_used * 1000).toLocaleString() : "never"}</td>
+              <td className="py-2.5 pr-3 text-xs text-[#8e8e9a]">{k.last_used ? new Date(k.last_used * 1000).toLocaleString() : "never"}</td>
               <td className="py-2.5 pr-3"><input type="checkbox" checked={k.enabled} onChange={() => toggle(k)} /></td>
               <td className="py-2.5 text-right whitespace-nowrap"><button className="btn !p-1.5" onClick={() => setForm(k)}><Pencil size={13} /></button> <button className="btn danger !p-1.5" onClick={() => del(k)}><Trash2 size={13} /></button></td>
             </tr>))}</tbody></table></div>
@@ -86,7 +86,7 @@ export default function KeysPanel({ gwId, models, slug }: { gwId: number; models
             <div className="rounded-md border border-[#d1a553]/30 bg-[#d1a553]/10 p-3 text-sm text-[#e6c27a]">This is the only time the key is shown. Store it somewhere safe.</div>
             <div className="mono flex items-center justify-between gap-2 rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs"><span className="break-all">{created.key}</span>
               <button className="btn !p-1.5" onClick={() => navigator.clipboard?.writeText(created.key)}><Copy size={14} /></button></div>
-            <pre className="mono scroll-thin overflow-x-auto rounded-md bg-black/40 p-3 text-[11px] text-[#9fb0ff]">{`curl ${location.origin}/gw/${slug}/v1/chat/completions \\\n  -H "Authorization: Bearer ${created.key}" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model":"${models[0] || "model"}","messages":[{"role":"user","content":"Hi"}]}'`}</pre>
+            <pre className="mono scroll-thin overflow-x-auto rounded-md bg-black/40 p-3 text-[11px] text-[#a79cff]">{`curl ${location.origin}/gw/${slug}/v1/chat/completions \\\n  -H "Authorization: Bearer ${created.key}" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model":"${models[0] || "model"}","messages":[{"role":"user","content":"Hi"}]}'`}</pre>
             <div className="flex justify-end"><button className="btn primary" onClick={() => setCreated(null)}>Done</button></div>
           </div>
         </Modal>

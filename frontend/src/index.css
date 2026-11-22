@@ -3,35 +3,41 @@
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
-  --color-ink: #0c0e13;
-  --color-panel: #12151c;
-  --color-panel2: #181c25;
-  --color-line: rgba(255, 255, 255, 0.08);
-  --color-accent: #3b6fd8;
-  --color-accent2: #7d9be0;
+  --color-ink: #121214;
+  --color-panel: #202024;
+  --color-panel2: #26262b;
+  --color-line: rgba(255, 255, 255, 0.07);
+  --color-accent: #6c5ce7;
+  --color-accent2: #a79cff;
   --color-ok: #4ade80;
   --color-warn: #fbbf24;
   --color-bad: #f87171;
 }
 
 html, body, #root { height: 100%; }
-body { margin: 0; background: #0c0e13; color: #dde1ea; font-family: var(--font-sans); font-size: 14px; -webkit-font-smoothing: antialiased; }
-.card { background: #12151c; border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; }
+/* Neutral charcoal surfaces, hairline borders, one violet accent. */
+body { margin: 0; background: #121214; color: #ececf0; font-family: var(--font-sans); font-size: 14px; -webkit-font-smoothing: antialiased; }
+.app-window { background: #1b1b1f; border: 1px solid rgba(255,255,255,0.06); border-radius: 22px; box-shadow: 0 30px 80px -30px rgba(0,0,0,.7); }
+.card { background: #202024; border: 1px solid rgba(255,255,255,0.06); border-radius: 14px; }
 .card-pad { padding: 20px; }
-.glow-btn { background: #3b6fd8; }
-.btn { display: inline-flex; align-items: center; gap: 7px; border-radius: 8px; padding: 7px 13px; font-size: 13px; font-weight: 500; cursor: pointer;
-  background: #181c25; border: 1px solid rgba(255,255,255,0.1); color: #d3d8e4; transition: background .12s; }
-.btn:hover { background: #20252f; }
-.btn.primary { background: #3b6fd8; border-color: #3b6fd8; color: #fff; }
-.btn.primary:hover { background: #4a7de6; }
-.btn.danger { color: #e0908f; }
+.glow-btn { background: #6c5ce7; }
+.btn { display: inline-flex; align-items: center; gap: 7px; border-radius: 10px; padding: 7px 14px; font-size: 13px; font-weight: 500; cursor: pointer;
+  background: transparent; border: 1px solid rgba(255,255,255,0.1); color: #d6d6dc; transition: background .12s, border-color .12s; }
+.btn:hover { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.16); }
+.btn.primary { background: #6c5ce7; border-color: #6c5ce7; color: #fff; }
+.btn.primary:hover { background: #7b6cf0; border-color: #7b6cf0; }
+.btn.danger { color: #e8a39d; }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
-.input { width: 100%; background: #0c0e13; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 8px 12px; font-size: 13px; color: #dde1ea; outline: none; }
-.input:focus { border-color: #3b6fd8; }
+.input { width: 100%; background: #17171a; border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 8px 12px; font-size: 13px; color: #ececf0; outline: none; transition: border-color .12s; }
+.input:focus { border-color: #6c5ce7; }
 select.input { appearance: none; }
-select.input option { background: #181c25; }
-label.lbl { display:block; font-size: 11px; color: #8a92a6; margin-bottom: 5px; font-weight: 500; text-transform: uppercase; letter-spacing: .05em; }
-.chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border-radius: 5px; font-size: 11px; font-weight: 500; border: 1px solid transparent; }
+select.input option { background: #26262b; }
+label.lbl { display:block; font-size: 11px; color: #8e8e9a; margin-bottom: 5px; font-weight: 500; text-transform: uppercase; letter-spacing: .05em; }
+/* tinted pill: colour comes from the element's inline style (text colour + 12% background) */
+.chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 500; border: 1px solid transparent; }
+.pill { display: inline-flex; align-items: center; border-radius: 999px; border: 1px solid rgba(255,255,255,0.1); padding: 5px 14px; font-size: 13px; color: #c8c8d0; cursor: pointer; transition: background .12s; }
+.pill:hover { background: rgba(255,255,255,0.05); }
+.pill.on { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.14); color: #fff; }
 .mono { font-family: var(--font-mono); }
 .scroll-thin::-webkit-scrollbar { width: 8px; height: 8px; }
 .scroll-thin::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 8px; }

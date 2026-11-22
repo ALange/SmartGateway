@@ -34,10 +34,10 @@ export default function AdminPassword() {
     <div className="card card-pad">
       <h3 className="flex items-center gap-2 text-base font-semibold"><Lock size={17} /> Admin password</h3>
       {locked ? (
-        <p className="mt-2 text-sm text-[#8a92a6]">The password is set by the <code>SG_ADMIN_PASSWORD</code> environment variable. Change it there and restart the container; it cannot be changed from here.</p>
+        <p className="mt-2 text-sm text-[#8e8e9a]">The password is set by the <code>SG_ADMIN_PASSWORD</code> environment variable. Change it there and restart the container; it cannot be changed from here.</p>
       ) : (
         <>
-          <p className="mt-1 text-sm text-[#8a92a6]">
+          <p className="mt-1 text-sm text-[#8e8e9a]">
             {source === "generated" ? "You are using the random password generated at first start (see the container log). Choose your own below." : "Changing it signs out every other browser."}
           </p>
           <div className="mt-4 grid gap-3 sm:grid-cols-3">

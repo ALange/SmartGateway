@@ -39,23 +39,23 @@ export default function GatewayLive() {
             <h3 className="mb-3 text-sm font-semibold">Last 15 minutes</h3>
             <div className="grid grid-cols-2 gap-3">
               {[["Requests", stats ? fmt(stats.total) : "–"], ["Success", stats ? (stats.success_rate * 100).toFixed(1) + "%" : "–"], ["Latency p50", stats ? ms(stats.p50_ms) : "–"], ["TTFT p50", stats ? ms(stats.ttft_p50_ms) : "–"], ["Tokens/s", tps], ["Queue", String(qd)]].map(([k, v]) => (
-                <div key={k} className="rounded-lg border border-white/5 bg-white/[0.02] p-3"><div className="text-xs text-[#8b91b5]">{k}</div><div className="mt-1 text-xl font-semibold">{v}</div></div>))}
+                <div key={k} className="rounded-lg border border-white/5 bg-white/[0.02] p-3"><div className="text-xs text-[#8e8e9a]">{k}</div><div className="mt-1 text-xl font-semibold">{v}</div></div>))}
             </div>
           </div>
           <div className="card card-pad">
             <h3 className="mb-3 text-sm font-semibold">Live requests</h3>
             <div className="space-y-1.5 text-xs">
-              {tail.length === 0 && <div className="text-[#6b7196]">Waiting for traffic…</div>}
+              {tail.length === 0 && <div className="text-[#787884]">Waiting for traffic…</div>}
               {tail.map((e) => (
                 <div key={e.key} className="flex items-center justify-between gap-2 rounded-lg bg-white/[0.02] px-2.5 py-1.5">
                   <span className="mono truncate">{e.type === "start" ? `→ ${e.upstream}` : e.type === "queued" ? "queued" : e.type === "retry" ? "↻ retry" : e.ok ? `✓ ${ms(e.total_ms)}` : `✗ ${e.status}`}</span>
-                  <span className="shrink-0 text-[#6b7196]">{e.public_model}{e.requirements ? ` [${e.requirements}]` : ""}</span>
+                  <span className="shrink-0 text-[#787884]">{e.public_model}{e.requirements ? ` [${e.requirements}]` : ""}</span>
                 </div>))}
             </div>
           </div>
           <div className="card card-pad">
             <h3 className="mb-2 text-sm font-semibold">Use it</h3>
-            <pre className="mono scroll-thin overflow-x-auto rounded-md bg-black/40 p-3 text-[11px] leading-relaxed text-[#9fb0ff]">{`curl ${gwUrl(gw.slug)}/chat/completions \\
+            <pre className="mono scroll-thin overflow-x-auto rounded-md bg-black/40 p-3 text-[11px] leading-relaxed text-[#a79cff]">{`curl ${gwUrl(gw.slug)}/chat/completions \\
 ${gw.has_keys ? `  -H "Authorization: Bearer <your-api-key>" \\\n` : ""}  -H "Content-Type: application/json" \\
   -d '{"model":"${(gw.models.find((m: any) => m.enabled !== false) || gw.models[0])?.public_name || "model"}",
        "messages":[{"role":"user","content":"Hi"}]}'

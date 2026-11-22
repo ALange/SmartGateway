@@ -14,7 +14,7 @@ function Spark({ data }: { data: number[] }) {
   const max = Math.max(1, ...data), w = 120, h = 28, bw = w / data.length;
   return (
     <svg width={w} height={h} className="shrink-0" aria-hidden>
-      {data.map((v, i) => <rect key={i} x={i * bw + 0.5} y={h - Math.max(v ? 2 : 1, (v / max) * h)} width={Math.max(1, bw - 1.5)} height={Math.max(v ? 2 : 1, (v / max) * h)} rx={1} fill={v ? "#3987e5" : "rgba(255,255,255,0.08)"} />)}
+      {data.map((v, i) => <rect key={i} x={i * bw + 0.5} y={h - Math.max(v ? 2 : 1, (v / max) * h)} width={Math.max(1, bw - 1.5)} height={Math.max(v ? 2 : 1, (v / max) * h)} rx={1} fill={v ? "#7c6cf0" : "rgba(255,255,255,0.08)"} />)}
     </svg>
   );
 }
@@ -70,31 +70,31 @@ export default function LiveAll() {
       <PageHeader title="Live" sub="Traffic of every gateway as it happens, the most used first."
         actions={
           <div className="inline-flex rounded-lg border border-white/10 bg-black/20 p-0.5 text-xs">
-            {RANGES.map(([l, m]) => <button key={m} onClick={() => setMinutes(m)} className={`rounded-md px-2.5 py-1 transition-colors ${minutes === m ? "bg-white/10 text-[#e6e8f5]" : "text-[#8b91b5] hover:text-[#c9cfdd]"}`}>{l}</button>)}
+            {RANGES.map(([l, m]) => <button key={m} onClick={() => setMinutes(m)} className={`rounded-md px-2.5 py-1 transition-colors ${minutes === m ? "bg-white/10 text-[#ececf0]" : "text-[#8e8e9a] hover:text-[#c8c8d0]"}`}>{l}</button>)}
           </div>} />
-      {items.length === 0 && <div className="card card-pad text-sm text-[#8b91b5]">No gateways yet.</div>}
+      {items.length === 0 && <div className="card card-pad text-sm text-[#8e8e9a]">No gateways yet.</div>}
       <div className="grid gap-5 2xl:grid-cols-2">
         {items.map((it, rank) => (
           <div key={it.key} className={`card card-pad ${it.requests === 0 ? "opacity-75" : ""}`}>
             <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="mono text-xs text-[#6b7196]">#{rank + 1}</span>
-                  <Link to={it.to} className="flex items-center gap-2 truncate text-base font-semibold hover:text-[#9fb0ff]">{it.unified ? <Layers size={16} /> : <Network size={16} />}{it.name}</Link>
-                  {it.unified && <span className="chip" style={{ color: "#8a8fc4", background: "#8a8fc422" }}>Unified</span>}
+                  <span className="mono text-xs text-[#787884]">#{rank + 1}</span>
+                  <Link to={it.to} className="flex items-center gap-2 truncate text-base font-semibold hover:text-[#a79cff]">{it.unified ? <Layers size={16} /> : <Network size={16} />}{it.name}</Link>
+                  {it.unified && <span className="chip" style={{ color: "#8e8e9a", background: "#8e8e9a22" }}>Unified</span>}
                 </div>
-                <div className="mono mt-1 truncate text-xs text-[#6b7196]">{it.url}</div>
+                <div className="mono mt-1 truncate text-xs text-[#787884]">{it.url}</div>
               </div>
               <div className="flex items-end gap-4">
                 <Spark data={it.timeline} />
-                <div className="text-right"><div className="text-2xl font-semibold leading-none">{fmt(it.requests)}</div><div className="mt-1 text-[11px] text-[#8b91b5]">requests · {RANGES.find(([, m]) => m === minutes)?.[0]}</div></div>
+                <div className="text-right"><div className="text-2xl font-semibold leading-none">{fmt(it.requests)}</div><div className="mt-1 text-[11px] text-[#8e8e9a]">requests · {RANGES.find(([, m]) => m === minutes)?.[0]}</div></div>
               </div>
             </div>
             <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
               {[["Success", it.requests ? ((1 - it.errors / it.requests) * 100).toFixed(1) + "%" : "–"], ["Latency p50", it.requests ? ms(it.p50) : "–"], ["TTFT p50", it.requests ? ms(it.ttft) : "–"], ["Tokens/s", it.requests ? it.tps.toFixed(1) : "–"], ["Queue", String(it.queue)]].map(([k, v]) => (
-                <div key={k} className="rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2"><div className="text-[11px] text-[#8b91b5]">{k}</div><div className="mt-0.5 text-base font-semibold">{v}</div></div>))}
+                <div key={k} className="rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2"><div className="text-[11px] text-[#8e8e9a]">{k}</div><div className="mt-0.5 text-base font-semibold">{v}</div></div>))}
             </div>
-            {it.flow.models.length > 0 ? <FlowGraph gw={it.flow} /> : <div className="rounded-lg border border-dashed border-white/10 p-6 text-center text-sm text-[#6b7196]">No models configured.</div>}
+            {it.flow.models.length > 0 ? <FlowGraph gw={it.flow} /> : <div className="rounded-lg border border-dashed border-white/10 p-6 text-center text-sm text-[#787884]">No models configured.</div>}
           </div>
         ))}
       </div>

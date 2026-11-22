@@ -38,7 +38,7 @@ function EndpointForm({ init, onClose, onDone }: { init?: any; onClose: () => vo
           <select className="input" value={f.transport} onChange={(e) => setF({ ...f, transport: e.target.value })}>
             <option value="auto">Auto-detect (Streamable HTTP, then legacy SSE)</option><option value="streamable_http">Streamable HTTP</option><option value="sse">Legacy SSE</option></select></div>
         <div>
-          <label className="lbl">Request headers <span className="normal-case text-[#6b7196]">(e.g. Authorization: Bearer …; stored encrypted)</span></label>
+          <label className="lbl">Request headers <span className="normal-case text-[#787884]">(e.g. Authorization: Bearer …; stored encrypted)</span></label>
           <div className="space-y-2">{hdrs.map((h, i) => (
             <div key={i} className="flex gap-2">
               <input className="input mono !w-44" placeholder="Header" value={h.k} readOnly={h.saved} onChange={(e) => setH(i, { k: e.target.value })} />
@@ -64,15 +64,15 @@ function EndpointForm({ init, onClose, onDone }: { init?: any; onClose: () => vo
 function Items({ epId }: { epId: number }) {
   const [items, setItems] = useState<any[] | null>(null);
   useEffect(() => { api(`/api/mcp-endpoints/${epId}/items`).then(setItems); }, [epId]);
-  if (!items) return <div className="py-3 text-sm text-[#8b91b5]">Loading…</div>;
-  if (items.length === 0) return <div className="py-3 text-sm text-[#8b91b5]">This server offers nothing.</div>;
+  if (!items) return <div className="py-3 text-sm text-[#8e8e9a]">Loading…</div>;
+  if (items.length === 0) return <div className="py-3 text-sm text-[#8e8e9a]">This server offers nothing.</div>;
   return (
     <div className="mt-4 space-y-4">{Object.keys(KIND_LABEL).map((k) => {
       const rows = items.filter((i) => i.kind === k);
       return rows.length === 0 ? null : (
-        <div key={k}><div className="mb-1 text-xs uppercase tracking-wider text-[#6b7196]">{KIND_LABEL[k]} ({rows.length})</div>
+        <div key={k}><div className="mb-1 text-xs uppercase tracking-wider text-[#787884]">{KIND_LABEL[k]} ({rows.length})</div>
           <div className="divide-y divide-white/5 rounded-md border border-white/5">{rows.map((i) => (
-            <div key={i.name} className="px-3 py-2 text-sm"><span className="mono">{i.name}</span>{i.description && <div className="mt-0.5 line-clamp-2 text-xs text-[#8b91b5]">{i.description}</div>}</div>))}</div></div>);
+            <div key={i.name} className="px-3 py-2 text-sm"><span className="mono">{i.name}</span>{i.description && <div className="mt-0.5 line-clamp-2 text-xs text-[#8e8e9a]">{i.description}</div>}</div>))}</div></div>);
     })}</div>
   );
 }
@@ -102,8 +102,8 @@ export default function McpEndpoints() {
             <div className="flex items-center gap-3">
               <StatusDot status={ep.status} />
               <div>
-                <div className="flex items-center gap-2 text-lg font-semibold"><Plug2 size={16} className="text-[#8b91b5]" />{ep.name}{ep.server_info?.name && ep.server_info.name !== ep.name && <span className="text-xs font-normal text-[#6b7196]">{ep.server_info.name} {ep.server_info.version}</span>}</div>
-                <div className="mono text-xs text-[#8b91b5]">{ep.url}{ep.header_names.length ? ` · ${ep.header_names.length} header(s)` : ""}</div>
+                <div className="flex items-center gap-2 text-lg font-semibold"><Plug2 size={16} className="text-[#8e8e9a]" />{ep.name}{ep.server_info?.name && ep.server_info.name !== ep.name && <span className="text-xs font-normal text-[#787884]">{ep.server_info.name} {ep.server_info.version}</span>}</div>
+                <div className="mono text-xs text-[#8e8e9a]">{ep.url}{ep.header_names.length ? ` · ${ep.header_names.length} header(s)` : ""}</div>
               </div>
               {ep.status === "offline" && ep.last_error && <span className="chip" style={{ color: "#d9776f", background: "#d9776f22" }}>{ep.last_error}</span>}
             </div>
@@ -113,10 +113,10 @@ export default function McpEndpoints() {
               <button className="btn danger" onClick={() => del(ep)}><Trash2 size={15} /></button>
             </div>
           </div>
-          <button className="mt-4 flex items-center gap-1.5 text-sm text-[#9fb0e8]" onClick={() => setOpen(open === ep.id ? null : ep.id)}>
+          <button className="mt-4 flex items-center gap-1.5 text-sm text-[#a79cff]" onClick={() => setOpen(open === ep.id ? null : ep.id)}>
             {open === ep.id ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
             {ep.counts.tool} tools · {ep.counts.resource + ep.counts.template} resources · {ep.counts.prompt} prompts
-            {ep.used_by.length > 0 && <span className="ml-2 text-xs text-[#6b7196]">used by {ep.used_by.join(", ")}</span>}
+            {ep.used_by.length > 0 && <span className="ml-2 text-xs text-[#787884]">used by {ep.used_by.join(", ")}</span>}
           </button>
           {open === ep.id && <Items epId={ep.id} />}
         </div>))}</div>

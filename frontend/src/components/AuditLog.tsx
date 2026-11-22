@@ -24,24 +24,24 @@ export default function AuditLog() {
       </div>
       <div className="card overflow-x-auto p-2 scroll-thin">
         <table className="w-full text-sm">
-          <thead><tr className="text-left text-xs uppercase tracking-wider text-[#6b7196]">
+          <thead><tr className="text-left text-xs uppercase tracking-wider text-[#787884]">
             {["Time", "Who", "Action", "Target", "Changed fields", "IP"].map((h) => <th key={h} className="px-3 py-3 font-medium">{h}</th>)}</tr></thead>
           <tbody>
             {rows.map((r) => (
               <tr key={r.id} className="border-t border-white/5 hover:bg-white/[0.02]">
-                <td className="whitespace-nowrap px-3 py-2 text-[#8b91b5]">{new Date(r.ts * 1000).toLocaleString()}</td>
+                <td className="whitespace-nowrap px-3 py-2 text-[#8e8e9a]">{new Date(r.ts * 1000).toLocaleString()}</td>
                 <td className="px-3 py-2">{r.actor || "—"}</td>
-                <td className="px-3 py-2"><span className="chip" style={{ color: r.status >= 400 ? "#d9776f" : r.action.startsWith("delete") ? "#d1a553" : "#7d9be0", background: "#ffffff0d" }}>{r.action}</span></td>
+                <td className="px-3 py-2"><span className="chip" style={{ color: r.status >= 400 ? "#d9776f" : r.action.startsWith("delete") ? "#d1a553" : "#a79cff", background: "#ffffff0d" }}>{r.action}</span></td>
                 <td className="mono px-3 py-2 text-xs">{r.target_type}{r.target_id ? ` #${r.target_id}` : ""}</td>
-                <td className="px-3 py-2 text-xs text-[#8b91b5]">{(r.fields || []).join(", ") || "—"}</td>
-                <td className="mono px-3 py-2 text-xs text-[#6b7196]">{r.ip}</td>
+                <td className="px-3 py-2 text-xs text-[#8e8e9a]">{(r.fields || []).join(", ") || "—"}</td>
+                <td className="mono px-3 py-2 text-xs text-[#787884]">{r.ip}</td>
               </tr>
             ))}
           </tbody>
         </table>
         {rows.length === 0 && <Empty>No recorded changes yet.</Empty>}
       </div>
-      <p className="mt-2 text-xs text-[#6b7196]">Only the names of the changed fields are stored, never their values, so keys and passwords cannot leak into this log.</p>
+      <p className="mt-2 text-xs text-[#787884]">Only the names of the changed fields are stored, never their values, so keys and passwords cannot leak into this log.</p>
     </div>
   );
 }

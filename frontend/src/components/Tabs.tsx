@@ -1,6 +1,6 @@
 import { NavLink, useSearchParams } from "react-router-dom";
 
-const cls = (on: boolean) => `-mb-px border-b-2 px-4 py-2 text-sm transition ${on ? "border-[#3b6fd8] text-white" : "border-transparent text-[#8a92a6] hover:text-white"}`;
+const cls = (on: boolean) => `pill ${on ? "on" : ""}`;
 
 /** The selected tab lives in the URL (?tab=...), so it can be linked to and survives a refresh. */
 export function useTab(keys: string[], fallback: string = keys[0]): [string, (k: string) => void] {
@@ -11,7 +11,7 @@ export function useTab(keys: string[], fallback: string = keys[0]): [string, (k:
 
 export function Tabs({ items, value, onChange }: { items: [string, string][]; value: string; onChange: (k: string) => void }) {
   return (
-    <div className="mb-5 flex flex-wrap gap-1 border-b border-white/[0.08]">
+    <div className="mb-5 flex flex-wrap gap-2">
       {items.map(([k, label]) => <button key={k} onClick={() => onChange(k)} className={cls(value === k)}>{label}</button>)}
     </div>
   );
@@ -20,7 +20,7 @@ export function Tabs({ items, value, onChange }: { items: [string, string][]; va
 /** Same look, but each tab is its own page (route). */
 export function LinkTabs({ items }: { items: [string, string][] }) {
   return (
-    <div className="mb-5 flex flex-wrap gap-1 border-b border-white/[0.08]">
+    <div className="mb-5 flex flex-wrap gap-2">
       {items.map(([to, label]) => <NavLink key={to} to={to} end className={({ isActive }) => cls(isActive)}>{label}</NavLink>)}
     </div>
   );

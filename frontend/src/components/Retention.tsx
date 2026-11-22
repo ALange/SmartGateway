@@ -36,14 +36,14 @@ export default function Retention() {
     <div className="card card-pad">
       <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
         <h3 className="flex items-center gap-2 text-base font-semibold"><HardDrive size={17} /> Data retention</h3>
-        {info && <span className="text-xs text-[#8a92a6]">database {size(info.size_bytes)}</span>}
+        {info && <span className="text-xs text-[#8e8e9a]">database {size(info.size_bytes)}</span>}
       </div>
-      <p className="mb-4 text-sm text-[#8b91b5]">Delete old rows automatically so the database does not grow forever. 0 days keeps everything. Request logs hold no prompts or answers, only metadata.</p>
+      <p className="mb-4 text-sm text-[#8e8e9a]">Delete old rows automatically so the database does not grow forever. 0 days keeps everything. Request logs hold no prompts or answers, only metadata.</p>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {FIELDS.map(([k, label, table]) => (
           <div key={k}><label className="lbl">{label} · keep days</label>
             <input type="number" min={0} max={3650} className="input" value={v[k] ?? 0} onChange={(e) => setV({ ...v, [k]: +e.target.value })} />
-            <div className="mt-1 text-xs text-[#6b7196]">{info ? `${fmt(info.rows[table] ?? 0)} rows` : ""}</div></div>
+            <div className="mt-1 text-xs text-[#787884]">{info ? `${fmt(info.rows[table] ?? 0)} rows` : ""}</div></div>
         ))}
       </div>
       <div className="mt-4 flex flex-wrap items-center gap-2">

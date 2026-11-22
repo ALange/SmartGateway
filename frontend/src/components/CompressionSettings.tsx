@@ -10,10 +10,10 @@ const MODES: [string, string, string][] = [
 ];
 
 function Num({ label, value, onChange, step, hint }: { label: string; value: any; onChange: (v: number) => void; step?: number; hint?: string }) {
-  return <div><label className="lbl">{label}</label><input type="number" step={step} className="input" value={value ?? ""} onChange={(e) => onChange(+e.target.value)} />{hint && <p className="mt-1 text-xs text-[#6b7196]">{hint}</p>}</div>;
+  return <div><label className="lbl">{label}</label><input type="number" step={step} className="input" value={value ?? ""} onChange={(e) => onChange(+e.target.value)} />{hint && <p className="mt-1 text-xs text-[#787884]">{hint}</p>}</div>;
 }
 function Check({ label, value, onChange, hint }: { label: string; value: boolean; onChange: (v: boolean) => void; hint?: string }) {
-  return <label className="flex cursor-pointer items-start gap-3 text-sm"><input type="checkbox" className="mt-1" checked={!!value} onChange={(e) => onChange(e.target.checked)} /><span>{label}{hint && <span className="block text-xs text-[#6b7196]">{hint}</span>}</span></label>;
+  return <label className="flex cursor-pointer items-start gap-3 text-sm"><input type="checkbox" className="mt-1" checked={!!value} onChange={(e) => onChange(e.target.checked)} /><span>{label}{hint && <span className="block text-xs text-[#787884]">{hint}</span>}</span></label>;
 }
 
 export default function CompressionSettings() {
@@ -41,9 +41,9 @@ export default function CompressionSettings() {
     <div className="card card-pad">
       <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
         <h3 className="flex items-center gap-2 text-base font-semibold"><Minimize2 size={17} /> Context compression</h3>
-        <Link to="/compression" className="text-sm text-[#7d9be0] hover:underline">View savings &amp; insights →</Link>
+        <Link to="/compression" className="text-sm text-[#a79cff] hover:underline">View savings &amp; insights →</Link>
       </div>
-      <p className="mb-5 max-w-3xl text-sm text-[#8a92a6]">
+      <p className="mb-5 max-w-3xl text-sm text-[#8e8e9a]">
         Long agent conversations resend every earlier tool output on each turn. Compression shrinks those <em>older</em> tool results (JSON, logs, search results, long text)
         before they reach the model, so prompts get smaller and fit smaller context windows. The newest results the model has not seen yet are never touched. Applies to all client APIs.
         A model can override this default in its gateway settings.
@@ -51,9 +51,9 @@ export default function CompressionSettings() {
 
       <div className="grid gap-3 md:grid-cols-3">
         {MODES.map(([k, label, desc]) => (
-          <button key={k} onClick={() => setMode(k)} className={`rounded-lg border p-4 text-left transition ${mode === k ? "border-[#3b6fd8] bg-[#3b6fd8]/10" : "border-white/[0.08] hover:bg-white/[0.03]"}`}>
-            <div className="flex items-center gap-2 font-medium"><span className={`h-3 w-3 rounded-full border ${mode === k ? "border-[#3b6fd8] bg-[#3b6fd8]" : "border-white/30"}`} />{label}{k === "off" && <span className="chip text-[#8a92a6]" style={{ background: "#ffffff0d" }}>default</span>}</div>
-            <p className="mt-1.5 text-xs text-[#8a92a6]">{desc}</p>
+          <button key={k} onClick={() => setMode(k)} className={`rounded-lg border p-4 text-left transition ${mode === k ? "border-[#6c5ce7] bg-[#6c5ce7]/10" : "border-white/[0.08] hover:bg-white/[0.03]"}`}>
+            <div className="flex items-center gap-2 font-medium"><span className={`h-3 w-3 rounded-full border ${mode === k ? "border-[#6c5ce7] bg-[#6c5ce7]" : "border-white/30"}`} />{label}{k === "off" && <span className="chip text-[#8e8e9a]" style={{ background: "#ffffff0d" }}>default</span>}</div>
+            <p className="mt-1.5 text-xs text-[#8e8e9a]">{desc}</p>
           </button>
         ))}
       </div>
@@ -78,7 +78,7 @@ export default function CompressionSettings() {
       </div>
 
       <details className="mt-5 rounded-md border border-white/[0.08] p-3">
-        <summary className="cursor-pointer text-sm text-[#8a92a6]">Advanced parameters</summary>
+        <summary className="cursor-pointer text-sm text-[#8e8e9a]">Advanced parameters</summary>
         <div className="mt-4 grid gap-4 md:grid-cols-3">
           <Num label="JSON · max array items" value={cfg.json.max_items} onChange={(v) => set(["json", "max_items"], v)} hint="0 keeps every item" />
           <Num label="JSON · string keep ratio" value={cfg.json.compression_ratio} step={0.05} onChange={(v) => set(["json", "compression_ratio"], v)} hint="Long strings shrink to this fraction" />
@@ -97,7 +97,7 @@ export default function CompressionSettings() {
 
       {msg && <div className={`mt-4 rounded-md border p-2.5 text-sm ${msg.ok ? "border-[#5fb585]/30 bg-[#5fb585]/10 text-[#7fd1a3]" : "border-red-400/30 bg-red-400/10 text-red-300"}`}>{msg.text}</div>}
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-        <span className="text-xs text-[#6b7196]">In-memory compression cache: {s.cache.entries} entries · {s.cache.hits} hits / {s.cache.misses} misses</span>
+        <span className="text-xs text-[#787884]">In-memory compression cache: {s.cache.entries} entries · {s.cache.hits} hits / {s.cache.misses} misses</span>
         <div className="flex gap-2">
           <button className="btn" onClick={clear} disabled={busy === "clear"}><Trash2 size={15} /> Clear cache</button>
           <button className="btn primary" onClick={save} disabled={busy === "save"}>{busy === "save" ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />} Save</button>
