@@ -15,7 +15,7 @@ context compression and live observability. It also combines remote **MCP server
   tiered small-to-large routing, fallbacks, sticky sessions, retries and circuit breaker.
 - **Your names, your rules.** Expose models under your own public names, plus optional extra aliases (`gpt-4o`, `claude-sonnet`, ...)
   so existing clients work unchanged. A unified endpoint serves several gateways from one URL.
-- **MCP Endpoints and MCP Gateways.** Connect external MCP servers, then publish a curated mix of their tools, resources and prompts as
+- **MCP Servers and MCP Gateways.** Connect external MCP servers, then publish a curated mix of their tools, resources and prompts as
   one MCP server with its own keys.
 - **Multi-tenant and safe.** Per-gateway API keys (hashed, shown once) with RPM/TPM limits, quotas and expiry; admin login;
   upstream keys encrypted at rest.
@@ -35,8 +35,8 @@ SG_ADMIN_PASSWORD='choose-a-long-password' docker compose up -d --build     # UI
 ```
 
 1. **Endpoints** -> add your upstream server (URL, optional key). Models and capabilities are discovered; enable the ones you want.
-2. **Smart Gateways** -> create a gateway, add models under public names. Point clients at `http://HOST:8080/gw/<slug>/v1`.
-3. Optional: create API keys on the gateway, add **MCP Endpoints** and combine them in an **MCP Gateway**.
+2. **Gateways** -> create a gateway, add models under public names. Point clients at `http://HOST:8080/gw/<slug>/v1`.
+3. Optional: create API keys on the gateway, add **MCP Servers** and combine them in an **MCP Gateway**.
 
 Try it without real models: `docker compose --profile demo up -d` starts three mock upstreams (`http://mock-a:9000/v1`, `mock-b`, `mock-c`),
 and `tools/load.sh http://localhost:8080 30` generates traffic against a gateway with slug `main`.
@@ -77,8 +77,8 @@ set a system prompt, default parameters, a max-tokens ceiling, caching and compr
 **Extra names (aliases):** a public model can have optional additional names. Clients may request any of them; the request is logged,
 cached and answered under the name used, and `/models` lists each one. Keys' allowed-model lists accept the canonical name or an alias.
 
-### MCP Endpoints and MCP Gateways
-**MCP Endpoints** connects remote MCP servers (Streamable HTTP, with legacy SSE fallback). Headers such as `Authorization` are stored
+### MCP Servers and MCP Gateways
+**MCP Servers** connects remote MCP servers (Streamable HTTP, with legacy SSE fallback). Headers such as `Authorization` are stored
 encrypted, and discovery, health checks and re-scans run automatically. **MCP Gateways** combines endpoints into one server at
 `/mcp/<slug>`:
 
@@ -86,13 +86,13 @@ encrypted, and discovery, health checks and re-scans run automatically. **MCP Ga
 - per endpoint you tick which items are exposed (new upstream items stay off until you enable them);
 - optional MCP API keys with rate limit, expiry and allowed tools; a gateway with no keys is open;
 - a built-in **Test** dialog, recent calls, and dashboard statistics (calls, errors, latency, top tools). Only metadata is logged, never
-  arguments or results; retention is configurable in Settings.
+  arguments or results; retention is configurable in Settings → Data.
 
 Not supported: stdio servers, OAuth login flows to upstream servers (use static headers/tokens), sampling, subscriptions and
 `listChanged` notifications.
 
 ### Unified endpoint
-Settings -> **Unified endpoint** exposes several gateways through one OpenAI-compatible URL, `/unified/v1`
+Gateways -> **Unified** tab exposes several gateways through one OpenAI-compatible URL, `/unified/v1`
 (`chat/completions`, `completions`, `embeddings`, `models`, plus the Anthropic `messages` and `responses` surfaces).
 You choose which gateways are exposed; the `model` a client sends is the **gateway name** (case-insensitive, the slug also works).
 A gateway with several public models is reachable as `Name` (its configurable default model) and as `Name/model`.
@@ -142,7 +142,7 @@ so later turns send a byte-identical (prompt-cache friendly) prefix, and a resul
 Compressing before routing also lets long conversations fit smaller context windows.
 
 * **Modes:** `off` (default) · `shadow` (measure what it would save, forward the original) · `on`. Set the global default in
-  **Settings → Context compression**; each public model can override it in the gateway editor. A client can opt out per request with
+  **Settings → Compression**; each public model can override it in the gateway editor. A client can opt out per request with
   `X-SG-Compress: off`. Compressed requests carry `X-SG-Compressed: <tokens saved>`.
 * **Compression page:** savings by content type and compressor (unique savings vs. tokens not sent on every turn), a **cache-alignment**
   view (volatile content such as timestamps/UUIDs in system prompts lowers a 0–100 score and breaks prefix/KV-cache reuse), **context
@@ -179,7 +179,7 @@ Replayed chunks are re-split on word boundaries, so chunk boundaries differ from
 finish reason and usage are identical. The Playground's **Test cache** button demonstrates all of this.
 
 By default entries live in process memory (lost on restart). To keep them across restarts and share them between instances, open
-**Settings** and enter a Redis URL (`redis://[:password@]host:6379/0`, `rediss://` for TLS), press *Test connection*, enable and save —
+**Settings → General** and enter a Redis URL (`redis://[:password@]host:6379/0`, `rediss://` for TLS), press *Test connection*, enable and save —
 no restart needed. A bundled Redis is available with `docker compose --profile redis up -d` (URL `redis://redis:6379/0`); `SG_REDIS_URL`
 can preconfigure it. The URL (with its password) is stored encrypted. If Redis is unreachable requests keep working: the cache falls back
 to memory (switchable in Settings) and reconnects automatically (`SG_CACHE_RETRY_AFTER`, default 15 s). Cached responses are shared by all
