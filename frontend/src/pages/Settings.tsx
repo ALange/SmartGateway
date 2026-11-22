@@ -5,6 +5,7 @@ import { fmt, PageHeader } from "../components/ui";
 import CompressionSettings from "../components/CompressionSettings";
 import UnifiedEndpoint from "../components/UnifiedEndpoint";
 import Retention from "../components/Retention";
+import AdminPassword from "../components/AdminPassword";
 
 export default function Settings() {
   const [s, setS] = useState<any>(null);
@@ -129,6 +130,7 @@ export default function Settings() {
       </div>
       <CompressionSettings />
       <Retention />
+      <AdminPassword />
     </div>
   );
 }

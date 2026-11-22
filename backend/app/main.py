@@ -8,7 +8,7 @@ import secrets
 import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
@@ -88,9 +88,9 @@ def request_authed(headers, cookies) -> bool:
     h = headers.get("authorization", "")
     try:
         if h.lower().startswith("bearer "):
-            return secrets.compare_digest(h[7:], config.ADMIN_PASSWORD)
+            return config.verify_password(h[7:])
         if h.lower().startswith("basic "):
-            return secrets.compare_digest(base64.b64decode(h[6:]).decode().split(":", 1)[1], config.ADMIN_PASSWORD)
+            return config.verify_password(base64.b64decode(h[6:]).decode().split(":", 1)[1])
     except Exception:  # noqa: BLE001
         return False
     return False
@@ -169,7 +169,36 @@ class LoginIn(BaseModel):
 
 @app.get("/api/session")
 def session_info(request: Request):
-    return {"auth_required": bool(config.ADMIN_PASSWORD), "authenticated": request_authed(request.headers, request.cookies)}
+    return {"auth_required": bool(config.ADMIN_PASSWORD), "authenticated": request_authed(request.headers, request.cookies),
+            "password_source": config.PASSWORD_SOURCE}
+
+
+class PasswordIn(BaseModel):
+    current: str
+    new: str
+
+
+@app.post("/api/admin/password")
+def change_password(body: PasswordIn, request: Request):
+    if config.PASSWORD_SOURCE not in ("ui", "generated"):
+        raise HTTPException(400, "The admin password is set by the SG_ADMIN_PASSWORD environment variable; change it there")
+    ip = request.client.host if request.client else "?"
+    if _locked(ip):
+        return JSONResponse({"detail": "Too many failed attempts, try again in a few minutes"}, status_code=429)
+    if not config.verify_password(body.current):
+        _fail(ip)
+        audit.record(admin_actor(), ip, "password change failed", "session", status=403, method="POST", path="/api/admin/password")
+        return JSONResponse({"detail": "Current password is wrong"}, status_code=403)
+    if len(body.new) < config.MIN_PASSWORD:
+        raise HTTPException(400, f"The new password must be at least {config.MIN_PASSWORD} characters")
+    if body.new == body.current:
+        raise HTTPException(400, "The new password must differ from the current one")
+    config.set_admin_password(body.new)
+    _fails.pop(ip, None)
+    r = JSONResponse({"ok": True})   # every other session is now invalid; keep this browser signed in
+    secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
+    r.set_cookie(COOKIE, make_session(), max_age=SESSION_TTL, httponly=True, samesite="lax", secure=secure)
+    return r
 
 
 @app.post("/api/login")
@@ -178,7 +207,7 @@ def login(body: LoginIn, request: Request):
     if _locked(ip):
         return JSONResponse({"detail": "Too many failed attempts, try again in a few minutes"}, status_code=429)
     ok = (not config.ADMIN_PASSWORD) or (
-        secrets.compare_digest(body.password, config.ADMIN_PASSWORD)
+        config.verify_password(body.password)
         and secrets.compare_digest(body.username, os.environ.get("SG_ADMIN_USER", "admin")))
     if not ok:
         _fail(ip)
