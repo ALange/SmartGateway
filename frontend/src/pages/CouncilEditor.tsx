@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { Plus, Save, Trash2, Users } from "lucide-react";
 import { api } from "../api";
 import { PageHeader } from "../components/ui";
@@ -101,6 +101,7 @@ export default function CouncilEditor() {
 
   return (
     <div className="fadein">
+      <Link to="/councils" className="mb-2 inline-block text-sm text-[#8a92a6] hover:text-white">← Gateways</Link>
       <PageHeader title={id ? "Edit council" : "New council"} sub="Several models answer, review each other anonymously, and a chairman writes the final answer."
         actions={<><button className="btn" onClick={() => nav(-1)}>Cancel</button><button className="btn primary" onClick={save}><Save size={16} /> Save council</button></>} />
       {err && <div className="mb-4 rounded-md border border-[#d9776f]/40 bg-[#d9776f]/10 p-3 text-sm text-[#e8a39d]">{err}</div>}

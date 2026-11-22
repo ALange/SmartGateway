@@ -10,7 +10,7 @@ export default function McpPanel({ d }: { d: any }) {
   const bars = d.timeline.map((b: any) => ({ ...b, label: new Date(b.t * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), ok: b.calls - b.errors }));
   return (
     <div className="mt-5">
-      <div className="mb-3 flex items-center gap-2"><Plug2 size={16} /><h3 className="text-base font-semibold">MCP endpoints</h3>
+      <div className="mb-3 flex items-center gap-2"><Plug2 size={16} /><h3 className="text-base font-semibold">MCP servers</h3>
         <Link to="/mcp-endpoints" className="ml-2 text-xs text-[#9fb0e8] hover:underline">manage</Link></div>
       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
         {[["MCP calls", fmt(t.calls), `${t.endpoints} endpoint${t.endpoints === 1 ? "" : "s"}, ${t.online} online`],
@@ -29,7 +29,7 @@ export default function McpPanel({ d }: { d: any }) {
                 <td className="pr-3 text-xs text-[#8b91b5]">{e.tools} tools · {e.resources} res · {e.prompts} prompts</td>
                 <td className="pr-3">{fmt(e.calls)}</td><td className={`pr-3 ${e.errors ? "text-[#d9776f]" : ""}`}>{e.errors}</td>
                 <td className="pr-3">{e.avg_ms == null ? "–" : ms(e.avg_ms)}</td><td>{e.p95_ms == null ? "–" : ms(e.p95_ms)}</td></tr>))}
-            {d.endpoints.length === 0 && <tr><td colSpan={6} className="py-3 text-sm text-[#6b7196]">No MCP endpoints yet.</td></tr>}</tbody>
+            {d.endpoints.length === 0 && <tr><td colSpan={6} className="py-3 text-sm text-[#6b7196]">No MCP servers yet.</td></tr>}</tbody>
           </table>
           {d.tools.length > 0 && (<>
             <div className="mb-1 mt-5 text-xs uppercase tracking-wider text-[#6b7196]">Top tools</div>

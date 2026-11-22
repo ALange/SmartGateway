@@ -22,7 +22,7 @@ export function CachePanel({ perf }: { perf: any }) {
     <div className="card card-pad">
       <div className="mb-4 flex items-center justify-between gap-2">
         <h3 className="flex items-center gap-2 text-base font-semibold"><Database size={16} /> Response cache</h3>
-        <Link to="/settings" className="chip" style={{ color: state[1], background: state[1] + "22" }} title="Cache backend (Settings)">{state[0]}</Link>
+        <Link to="/settings?tab=general" className="chip" style={{ color: state[1], background: state[1] + "22" }} title="Cache backend (Settings)">{state[0]}</Link>
       </div>
       {c.eligible === 0 && c.skipped === 0 && c.bypassed === 0 ? (
         <p className="text-sm text-[#6b7196]">No requests used the cache in this period. Enable caching per model in a gateway's settings, then send identical requests (temperature 0 by default).</p>

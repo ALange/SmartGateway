@@ -33,7 +33,7 @@ export default function Retention() {
   });
   const vac = () => run("vac", async () => { const r = await api("/api/maintenance/vacuum", { method: "POST" }); return `Database file ${size(r.before)} → ${size(r.after)}.`; });
   return (
-    <div className="card card-pad mt-5">
+    <div className="card card-pad">
       <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
         <h3 className="flex items-center gap-2 text-base font-semibold"><HardDrive size={17} /> Data retention</h3>
         {info && <span className="text-xs text-[#8a92a6]">database {size(info.size_bytes)}</span>}

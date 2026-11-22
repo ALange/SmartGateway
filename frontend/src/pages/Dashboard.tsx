@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { ArrowUpRight, Clock } from "lucide-react";
+import { ArrowUpRight, Check, Clock } from "lucide-react";
 import { api, PALETTE } from "../api";
 import { useLive } from "../live";
 import { fmt, ms, PageHeader, StatusDot } from "../components/ui";
@@ -37,6 +37,27 @@ export default function Dashboard() {
       <PageHeader title="Dashboard" sub="Traffic, health and capacity across all gateways."
         actions={<div className="flex gap-1 rounded-lg border border-white/5 bg-white/[0.03] p-1">
           {RANGES.map(([l, v]) => <button key={v} onClick={() => setMinutes(v)} className={`rounded-md px-3.5 py-1.5 text-sm ${minutes === v ? "bg-white/10 text-white" : "text-[#8b91b5]"}`}>{l}</button>)}</div>} />
+
+      {(eps.length === 0 || gws.length === 0) && (
+        <div className="card card-pad mb-5">
+          <h3 className="text-base font-semibold">Get started</h3>
+          <p className="mt-1 text-sm text-[#8a92a6]">Three steps to your first request.</p>
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            {([
+              ["1", "Add an endpoint", "Point SmartGateway at an OpenAI-compatible server (llama.cpp, vLLM, Ollama, a hosted API).", "/endpoints", eps.length > 0],
+              ["2", "Create a gateway", "Expose its models under your own names and pick a routing strategy.", "/gateways/new", gws.length > 0],
+              ["3", "Connect a client", "Use the gateway URL from the Gateways page in your app, Claude Code or Codex.", "/gateways", false],
+            ] as [string, string, string, string, boolean][]).map(([n, t, d, to, done]) => (
+              <Link key={n} to={to} className="rounded-lg border border-white/5 bg-white/[0.02] p-4 hover:bg-white/[0.05]">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <span className="grid h-6 w-6 place-items-center rounded-full text-xs" style={{ background: done ? "#5fb58533" : "#3b6fd833", color: done ? "#7fd1a3" : "#9fb0ff" }}>{done ? <Check size={13} /> : n}</span>{t}
+                </div>
+                <div className="mt-2 text-xs text-[#8a92a6]">{d}</div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-5">
         {[

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { Plus, Save, X } from "lucide-react";
 import { api } from "../api";
 import { PageHeader } from "../components/ui";
@@ -44,7 +44,8 @@ export default function McpGatewayEditor() {
   const toolNames: string[] = f.members.filter((m: any) => m.enabled).flatMap((m: any) => (items[m.endpoint_id] || []).filter((i) => i.kind === "tool" && m.enabled_items.includes(`tool:${i.name}`)).map((i) => exposed(m.prefix, "tool", i.name)));
   return (
     <div className="fadein">
-      <PageHeader title={id ? "Edit MCP gateway" : "New MCP gateway"} sub="Combine tools, resources and prompts of several MCP endpoints behind one MCP server URL."
+      <Link to="/mcp-gateways" className="mb-2 inline-block text-sm text-[#8a92a6] hover:text-white">← MCP Gateways</Link>
+      <PageHeader title={id ? "Edit MCP gateway" : "New MCP gateway"} sub="Combine tools, resources and prompts of several MCP servers behind one MCP server URL."
         actions={<><button className="btn" onClick={() => nav("/mcp-gateways")}>Cancel</button><button className="btn primary" onClick={save}><Save size={16} /> Save gateway</button></>} />
       {err && <div className="mb-4 rounded-md border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-300">{err}</div>}
       <div className="card card-pad mb-5 grid gap-4 md:grid-cols-2">
@@ -82,9 +83,9 @@ export default function McpGatewayEditor() {
           </div>);
       })}</div>
       <div className="card card-pad mt-4 flex flex-wrap items-center gap-3">
-        <select className="input !w-auto min-w-[240px]" value={pick} onChange={(e) => setPick(e.target.value)}><option value="">Add an MCP endpoint…</option>{free.map((e) => <option key={e.id} value={e.id}>{e.name} ({e.counts.tool} tools)</option>)}</select>
+        <select className="input !w-auto min-w-[240px]" value={pick} onChange={(e) => setPick(e.target.value)}><option value="">Add an MCP server…</option>{free.map((e) => <option key={e.id} value={e.id}>{e.name} ({e.counts.tool} tools)</option>)}</select>
         <button className="btn" disabled={!pick} onClick={add}><Plus size={15} /> Add</button>
-        {eps.length === 0 && <span className="text-sm text-[#8b91b5]">Add an MCP endpoint first.</span>}
+        {eps.length === 0 && <span className="text-sm text-[#8b91b5]">Add an MCP server first.</span>}
         <span className="ml-auto text-xs text-[#6b7196]">New items an endpoint offers later stay off until you tick them here.</span>
       </div>
       {id && <McpKeys gwId={+id} tools={toolNames} slug={f.slug} />}

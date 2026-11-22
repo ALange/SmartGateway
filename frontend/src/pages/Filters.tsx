@@ -1,3 +1,4 @@
+import { Tabs } from "../components/Tabs";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { BadgeCheck, FolderPlus, Library, Pencil, Plus, Search, Trash2 } from "lucide-react";
@@ -67,9 +68,7 @@ export default function Filters() {
       {note && <div className="mb-4 rounded-md border border-emerald-400/30 bg-emerald-400/10 p-3 text-sm text-emerald-300">{note}</div>}
       <p className="mb-4 text-xs text-[#6b7196]">Built-in presets cover national IDs, tax and phone numbers of 10 countries and GDPR sensitive data. Number formats with a checksum are only flagged when the checksum is valid. Keyword filters for GDPR categories are an approximation — they miss paraphrases and flag some harmless text. Presets are ordinary filters: edit, duplicate or delete them freely.</p>
 
-      <div className="mb-4 flex gap-2">
-        {(["filters", "groups"] as const).map((t) => <button key={t} className={`btn ${tab === t ? "primary" : ""}`} onClick={() => setTab(t)}>{t === "filters" ? `Filters (${data.filters.length})` : `Groups (${data.groups.length})`}</button>)}
-      </div>
+      <Tabs items={[["filters", `Filters (${data.filters.length})`], ["groups", `Groups (${data.groups.length})`]]} value={tab} onChange={(k) => setTab(k as "filters" | "groups")} />
 
       {tab === "filters" && <>
         <div className="mb-4 flex flex-wrap gap-2">

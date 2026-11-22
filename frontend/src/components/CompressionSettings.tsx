@@ -38,7 +38,7 @@ export default function CompressionSettings() {
   const clear = async () => { if (confirm("Clear the compression cache? Results will be recomputed on demand.")) { setBusy("clear"); await api("/api/compression/cache/clear", { method: "POST" }); await load(); setBusy(""); } };
 
   return (
-    <div className="card card-pad mt-5">
+    <div className="card card-pad">
       <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
         <h3 className="flex items-center gap-2 text-base font-semibold"><Minimize2 size={17} /> Context compression</h3>
         <Link to="/compression" className="text-sm text-[#7d9be0] hover:underline">View savings &amp; insights →</Link>

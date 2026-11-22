@@ -3,11 +3,13 @@ import { CheckCircle2, Database, Loader2, Plug, Save, Trash2, XCircle } from "lu
 import { api } from "../api";
 import { fmt, PageHeader } from "../components/ui";
 import CompressionSettings from "../components/CompressionSettings";
-import UnifiedEndpoint from "../components/UnifiedEndpoint";
 import Retention from "../components/Retention";
 import AdminPassword from "../components/AdminPassword";
+import { Link } from "react-router-dom";
+import { Tabs, useTab } from "../components/Tabs";
 
 export default function Settings() {
+  const [tab, setTab] = useTab(["general", "compression", "data", "security"]);
   const [s, setS] = useState<any>(null);
   const [stats, setStats] = useState<any>(null);
   const [f, setF] = useState<any>({ redis_enabled: false, url: "", username: "", password: "", redis_key_prefix: "sg:", cache_default_ttl: 600, cache_max_entry_kb: 512, cache_fallback_memory: true });
@@ -56,7 +58,8 @@ export default function Settings() {
   return (
     <div className="fadein">
       <PageHeader title="Settings" sub="System-wide options." />
-      <UnifiedEndpoint />
+      <Tabs items={[["general", "General"], ["compression", "Compression"], ["data", "Data"], ["security", "Security"]]} value={tab} onChange={setTab} />
+      {tab === "general" && <>
       <div className="card card-pad">
         <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
           <h3 className="flex items-center gap-2 text-base font-semibold"><Database size={17} /> Response cache</h3>
@@ -128,9 +131,13 @@ export default function Settings() {
           ["Tokens saved (24 h)", stats ? fmt(stats.tokens_saved_24h) : "–"],
         ].map(([k, v]) => <div key={k} className="card card-pad"><div className="text-sm text-[#8a92a6]">{k}</div><div className="mt-1.5 text-2xl font-semibold">{v}</div></div>)}
       </div>
-      <CompressionSettings />
-      <Retention />
-      <AdminPassword />
+      </>}
+      {tab === "compression" && <CompressionSettings />}
+      {tab === "data" && <Retention />}
+      {tab === "security" && <>
+        <AdminPassword />
+        <p className="mt-4 text-sm text-[#8a92a6]">Who changed what in the admin interface: <Link to="/logs?tab=audit" className="text-[#7d9be0] hover:underline">view the audit log →</Link></p>
+      </>}
     </div>
   );
 }

@@ -47,10 +47,10 @@ export default function UnifiedLive() {
   return (
     <div className="fadein">
       <PageHeader title="Unified endpoint" sub={`${url}  ·  live traffic of the exposed gateways`}
-        actions={<><button className="btn primary" onClick={() => setTesting(true)} disabled={testGw.models.length === 0}><FlaskConical size={15} /> Test</button><button className="btn" onClick={() => navigator.clipboard?.writeText(url)}><Copy size={15} /> Copy URL</button><Link to="/settings" className="btn"><Pencil size={15} /> Edit</Link></>} />
-      {!uni.enabled && <div className="mb-5 rounded-md border border-white/10 p-3 text-sm text-[#8b91b5]">The unified endpoint is disabled. Enable it in <Link to="/settings" className="text-[#7d9be0] hover:underline">Settings</Link>.</div>}
+        actions={<><button className="btn primary" onClick={() => setTesting(true)} disabled={testGw.models.length === 0}><FlaskConical size={15} /> Test</button><button className="btn" onClick={() => navigator.clipboard?.writeText(url)}><Copy size={15} /> Copy URL</button><Link to="/unified" className="btn"><Pencil size={15} /> Edit</Link></>} />
+      {!uni.enabled && <div className="mb-5 rounded-md border border-white/10 p-3 text-sm text-[#8b91b5]">The unified endpoint is disabled. Enable it in <Link to="/unified" className="text-[#7d9be0] hover:underline">Unified settings</Link>.</div>}
       {exposed.length === 0 && !(uni.models || []).length ? (
-        <div className="card card-pad text-sm text-[#8b91b5]">Nothing exposed yet. Choose gateways or models in <Link to="/settings" className="text-[#7d9be0] hover:underline">Settings</Link>.</div>
+        <div className="card card-pad text-sm text-[#8b91b5]">Nothing exposed yet. Choose gateways or models in <Link to="/unified" className="text-[#7d9be0] hover:underline">Unified settings</Link>.</div>
       ) : (
         <div className="grid gap-5 xl:grid-cols-[1fr_340px]">
           <FlowGraph gw={flow} onEvent={onEvent} />

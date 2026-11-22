@@ -10,7 +10,12 @@ export default function AdminPassword() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   useEffect(() => { api("/api/session").then((s: any) => setSource(s.password_source || "")).catch(() => {}); }, []);
-  if (source === "open") return null;   // login is disabled on this server, nothing to change
+  if (source === "open") return (
+    <div className="card card-pad">
+      <h3 className="flex items-center gap-2 text-base font-semibold"><Lock size={17} /> Admin password</h3>
+      <p className="mt-2 text-sm text-[#e0b36a]">Login is turned off on this server (<code>SG_ALLOW_OPEN_ADMIN</code> is set), so anyone who can reach this page can manage the gateway. Remove that variable and restart to require a password.</p>
+    </div>
+  );
 
   const locked = source === "env";
   const problem = pw && pw.length < 10 ? "At least 10 characters" : again && again !== pw ? "Passwords do not match" : "";
@@ -26,7 +31,7 @@ export default function AdminPassword() {
   };
 
   return (
-    <div className="card card-pad mt-5">
+    <div className="card card-pad">
       <h3 className="flex items-center gap-2 text-base font-semibold"><Lock size={17} /> Admin password</h3>
       {locked ? (
         <p className="mt-2 text-sm text-[#8a92a6]">The password is set by the <code>SG_ADMIN_PASSWORD</code> environment variable. Change it there and restart the container; it cannot be changed from here.</p>

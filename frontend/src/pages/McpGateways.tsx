@@ -48,9 +48,9 @@ export default function McpGateways() {
   const del = async (g: any) => { if (confirm(`Delete MCP gateway "${g.name}"? Its API keys stop working.`)) { await api(`/api/mcp-gateways/${g.id}`, { method: "DELETE" }); load(); } };
   return (
     <div className="fadein">
-      <PageHeader title="MCP Gateways" sub="One MCP server URL combining the tools, resources and prompts of several MCP endpoints."
+      <PageHeader title="MCP Gateways" sub="One MCP server URL combining the tools, resources and prompts of several MCP servers."
         actions={<Link to="/mcp-gateways/new" className="btn primary"><Plus size={16} /> New MCP gateway</Link>} />
-      {gws.length === 0 && <Empty>No MCP gateways yet. Add MCP endpoints first, then combine them here.</Empty>}
+      {gws.length === 0 && <Empty>No MCP gateways yet. Add MCP servers first, then combine them here.</Empty>}
       <div className="space-y-5">{gws.map((g) => (
         <div key={g.id} className="card card-pad">
           <div className="flex flex-wrap items-start justify-between gap-3">

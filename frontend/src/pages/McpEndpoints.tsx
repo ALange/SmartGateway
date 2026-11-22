@@ -30,7 +30,7 @@ function EndpointForm({ init, onClose, onDone }: { init?: any; onClose: () => vo
   };
   const setH = (i: number, p: Partial<Hdr>) => setHdrs(hdrs.map((h, j) => (j === i ? { ...h, ...p } : h)));
   return (
-    <Modal title={init ? `Edit MCP endpoint · ${init.name}` : "Add MCP endpoint"} onClose={onClose}>
+    <Modal title={init ? `Edit MCP server · ${init.name}` : "Add MCP server"} onClose={onClose}>
       <div className="space-y-4">
         <div><label className="lbl">Name</label><input className="input" placeholder="e.g. GitHub, Filesystem" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></div>
         <div><label className="lbl">Server URL</label><input className="input mono" placeholder="https://host/mcp" value={f.url} onChange={(e) => setF({ ...f, url: e.target.value })} /></div>
@@ -86,16 +86,16 @@ export default function McpEndpoints() {
   useEffect(() => { load(); const t = setInterval(load, 15000); return () => clearInterval(t); }, []);
   const rescan = async (id: number) => { setBusy(id); try { await api(`/api/mcp-endpoints/${id}/rescan`, { method: "POST" }); await load(); } catch (e: any) { alert(e.message); } setBusy(null); };
   const del = async (ep: any) => {
-    if (!confirm(`Delete MCP endpoint "${ep.name}"?`)) return;
+    if (!confirm(`Delete MCP server "${ep.name}"?`)) return;
     try { await api(`/api/mcp-endpoints/${ep.id}`, { method: "DELETE" }); }
     catch (e: any) { if (!confirm(`${e.message}\n\nDelete it anyway? It is removed from those gateways.`)) return; await api(`/api/mcp-endpoints/${ep.id}?force=true`, { method: "DELETE" }); }
     load();
   };
   return (
     <div className="fadein">
-      <PageHeader title="MCP Endpoints" sub="External MCP servers (Streamable HTTP or SSE) whose tools, resources and prompts you can combine into MCP gateways."
-        actions={<button className="btn primary" onClick={() => setForm({})}><Plus size={16} /> Add MCP endpoint</button>} />
-      {eps.length === 0 && <Empty>No MCP endpoints yet. Add the URL of a remote MCP server to discover what it offers.</Empty>}
+      <PageHeader title="MCP Servers" sub="External MCP servers (Streamable HTTP or SSE) whose tools, resources and prompts you can combine into MCP gateways."
+        actions={<button className="btn primary" onClick={() => setForm({})}><Plus size={16} /> Add MCP server</button>} />
+      {eps.length === 0 && <Empty>No MCP servers yet. Add the URL of a remote MCP server to discover what it offers.</Empty>}
       <div className="space-y-5">{eps.map((ep) => (
         <div key={ep.id} className="card card-pad">
           <div className="flex flex-wrap items-center justify-between gap-3">

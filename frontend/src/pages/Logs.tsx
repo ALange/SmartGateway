@@ -3,6 +3,7 @@ import { api, PALETTE } from "../api";
 import { Modal, ms, PageHeader } from "../components/ui";
 import CouncilTabs from "../components/CouncilTabs";
 import AuditLog from "../components/AuditLog";
+import { Tabs, useTab } from "../components/Tabs";
 
 const OUTCOMES: Record<string, [string, string, string]> = {
   complete: ["Complete", "#5fb585", "The model finished normally."],
@@ -27,7 +28,7 @@ export default function Logs() {
   const [probs, setProbs] = useState(false);
   const [run, setRun] = useState<any>(null);
   const openRun = (id: number) => api(`/api/council-runs/${id}`).then(setRun).catch(() => setRun({ missing: true }));
-  const [tab, setTab] = useState<"requests" | "audit">("requests");
+  const [tab, setTab] = useTab(["requests", "audit"]);
   useEffect(() => { api("/api/gateways?all=true").then(setGws); api("/api/endpoints").then(setEps); }, []);
   useEffect(() => {
     const load = () => api(`/api/logs?limit=200${gid ? `&gateway_id=${gid}` : ""}${errs ? "&only_errors=true" : ""}${probs ? "&problems=true" : ""}`).then(setRows);
@@ -35,10 +36,7 @@ export default function Logs() {
   }, [gid, errs, probs]);
   const epName = (id: number) => eps.find((e) => e.id === id)?.name || "—";
   const gwName = (id: number) => gws.find((g) => g.id === id)?.name || id;
-  const tabs = (
-    <div className="mb-4 flex gap-1">{([["requests", "Requests"], ["audit", "Audit log"]] as const).map(([k, l]) => (
-      <button key={k} onClick={() => setTab(k)} className={`btn ${tab === k ? "primary" : ""}`}>{l}</button>))}</div>
-  );
+  const tabs = <Tabs items={[["requests", "Requests"], ["audit", "Audit log"]]} value={tab} onChange={setTab} />;
   const exportQs = `${gid ? `&gateway_id=${gid}` : ""}${errs ? "&only_errors=true" : ""}`;
   if (tab === "audit") return <div className="fadein"><PageHeader title="Audit log" sub="Changes made through the admin interface." />{tabs}<AuditLog /></div>;
   return (

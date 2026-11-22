@@ -8,7 +8,7 @@ type Row = { id: number; name: string; slug: string; models: string[]; has_keys:
 const split = (t?: string) => String(t || "").split(/[,\n]/).map((x) => x.trim()).filter(Boolean);
 
 /** One OpenAI-compatible endpoint in front of several gateways; the model name is the gateway name. */
-export default function UnifiedEndpoint() {
+export default function UnifiedEndpoint({ onChange }: { onChange?: (v: any) => void } = {}) {
   const [enabled, setEnabled] = useState(false);
   const [rows, setRows] = useState<Row[] | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -23,7 +23,7 @@ export default function UnifiedEndpoint() {
   const [keyName, setKeyName] = useState("");
   const [fresh, setFresh] = useState<any>(null);  // a just-created key: its plaintext is shown once
   const [keyErr, setKeyErr] = useState("");
-  const apply = (v: any) => { setEnabled(v.enabled); setRows(v.gateways.map((g: any) => ({ ...g, aliases_text: (g.aliases || []).join(", ") }))); setDModels((v.models || []).map((m: any) => ({ ...m, aliases_text: (m.aliases || []).join(", ") }))); setKeys(v.keys || []); setDirty(false); };
+  const apply = (v: any) => { onChange?.(v); setEnabled(v.enabled); setRows(v.gateways.map((g: any) => ({ ...g, aliases_text: (g.aliases || []).join(", ") }))); setDModels((v.models || []).map((m: any) => ({ ...m, aliases_text: (m.aliases || []).join(", ") }))); setKeys(v.keys || []); setDirty(false); };
   useEffect(() => {
     api("/api/unified").then(apply).catch(() => {});
     api("/api/endpoints").then((eps: any[]) => setAllModels(eps.flatMap((e) => (e.models || []).filter((m: any) => m.enabled !== false).map((m: any) => ({ model_id: m.id, upstream_id: m.upstream_id, endpoint: e.name }))))).catch(() => {});

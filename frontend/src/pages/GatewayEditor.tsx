@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { Plus, Save, Trash2 } from "lucide-react";
 import { api, STRATEGIES } from "../api";
 import { CapChip, PageHeader } from "../components/ui";
@@ -52,6 +52,7 @@ export default function GatewayEditor() {
 
   return (
     <div className="fadein">
+      <Link to="/gateways" className="mb-2 inline-block text-sm text-[#8a92a6] hover:text-white">← Gateways</Link>
       <PageHeader title={id ? "Edit gateway" : "New smart gateway"} sub="Combine upstream models into one endpoint that speaks both the OpenAI and the Anthropic API."
         actions={<><button className="btn" onClick={() => nav(-1)}>Cancel</button><button className="btn primary" onClick={save}><Save size={16} /> Save gateway</button></>} />
       {err && <div className="mb-4 rounded-md border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-300">{err}</div>}

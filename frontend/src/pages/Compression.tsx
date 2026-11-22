@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Loader2, Play } from "lucide-react";
+import { Link } from "react-router-dom";
 import { api, PALETTE } from "../api";
 import { fmt, PageHeader } from "../components/ui";
 
 const RANGES: [string, string][] = [["1h", "1 hour"], ["24h", "24 hours"], ["7d", "7 days"], ["30d", "30 days"]];
-const TABS = ["Efficiency", "Cache alignment", "Context", "Try it"];
+const TABS = ["Savings", "Cache alignment", "Context", "Try it"];
 const tip = { contentStyle: { background: "#181c25", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 12 }, cursor: { fill: "rgba(255,255,255,0.04)" } };
 const pct = (v: number | null | undefined) => (v == null ? "–" : `${Math.round(v * 100)}%`);
 
@@ -39,7 +40,7 @@ function Efficiency({ d }: { d: any }) {
         <Tile label="Compression cache" value={d.liveCache ? `${fmt(d.liveCache.entries)} entries` : "–"} sub={d.liveCache ? `${fmt(d.liveCache.hits)} hits · ${fmt(d.liveCache.misses)} misses (since start)` : ""} />
       </div>
       <div className="grid gap-5 xl:grid-cols-2"><Breakdown title="By content type" rows={d.byContentType} /><Breakdown title="By compressor" rows={d.byCompressor} /></div>
-      {t.compressionEventsCount === 0 && <p className="text-sm text-[#8a92a6]">No compression activity yet. Turn on Shadow or On mode in Settings → Context compression, or per model in a gateway's settings.</p>}
+      {t.compressionEventsCount === 0 && <p className="text-sm text-[#8a92a6]">No compression activity yet. Turn on Shadow or On mode in Settings → Compression, or per model in a gateway's settings.</p>}
     </div>
   );
 }
@@ -155,6 +156,7 @@ export default function Compression() {
     <div className="fadein">
       <PageHeader title="Compression" sub="How much context compression saves, how stable your prompts are, and what fills the context."
         actions={tab !== 3 ? <>
+          <Link to="/settings?tab=compression" className="btn" title="Global compression mode and thresholds">Defaults</Link>
           <select className="input !w-auto" value={gw} onChange={(e) => setGw(e.target.value)}><option value="">All gateways</option>{gws.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}</select>
           <div className="flex gap-1 rounded-lg border border-white/[0.08] bg-white/[0.03] p-1">{RANGES.map(([k, l]) => <button key={k} onClick={() => setRange(k)} className={`rounded-md px-3 py-1 text-sm ${range === k ? "bg-white/10 text-white" : "text-[#8a92a6]"}`}>{l}</button>)}</div></> : undefined} />
       <div className="mb-5 flex gap-1 border-b border-white/[0.08]">{TABS.map((t, i) => <button key={t} onClick={() => setTab(i)} className={`-mb-px border-b-2 px-4 py-2 text-sm ${tab === i ? "border-[#3b6fd8] text-white" : "border-transparent text-[#8a92a6] hover:text-white"}`}>{t}</button>)}</div>

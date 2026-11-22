@@ -1,4 +1,4 @@
-import { NavLink, Route, Routes } from "react-router-dom";
+import { NavLink, Route, Routes, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
 import Logo from "./components/Logo";
 import { Activity, Users, LayoutGrid, LogOut, MessageSquare, Network, Plug, Plug2, Boxes, Minimize2, ListFilter, ScrollText, Settings as SettingsIcon } from "lucide-react";
@@ -21,21 +21,29 @@ import Logs from "./pages/Logs";
 import McpEndpoints from "./pages/McpEndpoints";
 import McpGateways from "./pages/McpGateways";
 import McpGatewayEditor from "./pages/McpGatewayEditor";
+import Unified from "./pages/Unified";
 
-const nav = [
-  { to: "/", label: "Dashboard", icon: LayoutGrid, end: true },
-  { to: "/endpoints", label: "Endpoints", icon: Plug },
-  { to: "/gateways", label: "Smart Gateways", icon: Network },
-  { to: "/councils", label: "Council Gateways", icon: Users },
-  { to: "/mcp-endpoints", label: "MCP Endpoints", icon: Plug2 },
-  { to: "/mcp-gateways", label: "MCP Gateways", icon: Boxes },
-  { to: "/live", label: "Live", icon: Activity },
-  { to: "/playground", label: "Playground", icon: MessageSquare },
-  { to: "/compression", label: "Compression", icon: Minimize2 },
-  { to: "/filters", label: "Content Filters", icon: ListFilter },
-  { to: "/logs", label: "Request Log", icon: ScrollText },
-  { to: "/settings", label: "Settings", icon: SettingsIcon },
+type NavItem = { to: string; label: string; icon: any; end?: boolean; also?: string[] };
+const groups: { title: string; items: NavItem[] }[] = [
+  { title: "Overview", items: [
+    { to: "/", label: "Dashboard", icon: LayoutGrid, end: true },
+    { to: "/live", label: "Live", icon: Activity }] },
+  { title: "LLM", items: [
+    { to: "/endpoints", label: "Endpoints", icon: Plug },
+    { to: "/gateways", label: "Gateways", icon: Network, also: ["/councils", "/unified"] },
+    { to: "/playground", label: "Playground", icon: MessageSquare }] },
+  { title: "MCP", items: [
+    { to: "/mcp-endpoints", label: "MCP Servers", icon: Plug2 },
+    { to: "/mcp-gateways", label: "MCP Gateways", icon: Boxes }] },
+  { title: "Insights", items: [
+    { to: "/logs", label: "Request Log", icon: ScrollText },
+    { to: "/compression", label: "Compression", icon: Minimize2 }] },
+  { title: "Safety", items: [{ to: "/filters", label: "Content Filters", icon: ListFilter }] },
+  { title: "System", items: [{ to: "/settings", label: "Settings", icon: SettingsIcon }] },
 ];
+const nav = groups.flatMap((g) => g.items);
+/** An item is active on its own path (and sub-paths) and on the extra paths it owns, e.g. Gateways also owns /councils and /unified. */
+const isOn = (n: NavItem, path: string) => [n.to, ...(n.also || [])].some((p) => (p === "/" ? path === "/" : path === p || path.startsWith(p + "/")));
 
 export default function App() {
   const [auth, setAuth] = useState<{ auth_required: boolean; authenticated: boolean } | null>(null);
@@ -48,10 +56,11 @@ export default function App() {
 
 function Shell({ auth, onLogout }: { auth: { auth_required: boolean }; onLogout: () => void }) {
   const { connected, snapshot } = useLive();
+  const path = useLocation().pathname;
   const inflight = snapshot ? Object.values<any>(snapshot.models).reduce((a, m) => a + m.in_flight, 0) : 0;
   return (
     <div className="mx-auto flex min-h-full max-w-[1800px] gap-5 p-5">
-      <aside className="sticky top-5 hidden h-[calc(100vh-40px)] w-[260px] shrink-0 flex-col gap-4 lg:flex">
+      <aside className="sticky top-5 hidden h-[calc(100vh-40px)] w-[260px] shrink-0 flex-col gap-3 lg:flex">
         <div className="flex items-center gap-3 px-2 py-1">
           <Logo size={32} />
           <span className="text-base font-semibold">SmartGateway</span>
@@ -59,12 +68,17 @@ function Shell({ auth, onLogout }: { auth: { auth_required: boolean }; onLogout:
         <div className="px-2 text-xs text-[#8a92a6]">
           <div className="flex items-center gap-2"><span className="h-2 w-2 rounded-full" style={{ background: connected ? "#5fb585" : "#d9776f" }} />{connected ? "Live stream connected" : "Reconnecting…"}</div>
         </div>
-        <nav className="card flex flex-col gap-0.5 p-2">
-          {nav.map((n) => (
-            <NavLink key={n.to} to={n.to} end={n.end}
-              className={({ isActive }) => `flex items-center gap-3 rounded-md px-3.5 py-3 text-[15px] transition ${isActive ? "bg-white/[0.07] text-white" : "text-[#9aa0c3] hover:bg-white/[0.04]"}`}>
-              <n.icon size={18} /> {n.label}
-            </NavLink>
+        <nav className="card scroll-thin flex min-h-0 flex-col gap-0.5 overflow-y-auto p-2">
+          {groups.map((g, gi) => (
+            <div key={g.title} className={gi ? "mt-1.5" : ""}>
+              <div className="px-3.5 pb-0.5 pt-1 text-[10.5px] font-medium uppercase tracking-wider text-[#6b7196]">{g.title}</div>
+              {g.items.map((n) => (
+                <NavLink key={n.to} to={n.to} end={n.end}
+                  className={`flex items-center gap-3 rounded-md px-3.5 py-2 text-[15px] transition ${isOn(n, path) ? "bg-white/[0.07] text-white" : "text-[#9aa0c3] hover:bg-white/[0.04]"}`}>
+                  <n.icon size={18} /> {n.label}
+                </NavLink>
+              ))}
+            </div>
           ))}
         </nav>
         <div className="flex-1" />
@@ -77,7 +91,7 @@ function Shell({ auth, onLogout }: { auth: { auth_required: boolean }; onLogout:
       <main className="min-w-0 flex-1">
         <div className="mb-4 flex gap-2 overflow-x-auto lg:hidden">
           {nav.map((n) => (
-            <NavLink key={n.to} to={n.to} end={n.end} className={({ isActive }) => `btn whitespace-nowrap ${isActive ? "primary" : ""}`}>
+            <NavLink key={n.to} to={n.to} end={n.end} className={`btn whitespace-nowrap ${isOn(n, path) ? "primary" : ""}`}>
               <n.icon size={16} /> {n.label}
             </NavLink>
           ))}
@@ -90,6 +104,7 @@ function Shell({ auth, onLogout }: { auth: { auth_required: boolean }; onLogout:
           <Route path="/councils" element={<Gateways kind="council" />} />
           <Route path="/councils/new" element={<CouncilEditor />} />
           <Route path="/gateways/:id/edit" element={<EditRoute />} />
+          <Route path="/unified" element={<Unified />} />
           <Route path="/gateways/unified" element={<UnifiedLive />} />
           <Route path="/gateways/:id" element={<GatewayLive />} />
           <Route path="/mcp-endpoints" element={<McpEndpoints />} />
