@@ -81,6 +81,7 @@ def sync_models(entries: list[dict]) -> None:
             s.flush()
         have = {gm.public_name: gm for gm in s.exec(select(GatewayModel).where(GatewayModel.gateway_id == gw.id)).all()}
         wanted = {e["name"]: e["model_id"] for e in entries}
+        off = {e["name"] for e in entries if e.get("disabled")}
         for name, gm in have.items():
             if name not in wanted:
                 for mem in s.exec(select(Member).where(Member.gateway_model_id == gm.id)).all():
@@ -92,6 +93,9 @@ def sync_models(entries: list[dict]) -> None:
                 gm = GatewayModel(gateway_id=gw.id, public_name=name)
                 s.add(gm)
                 s.flush()
+            if gm.enabled == (name in off):   # keep the internal model in step with the "disabled" switch
+                gm.enabled = name not in off
+                s.add(gm)
             mems = s.exec(select(Member).where(Member.gateway_model_id == gm.id)).all()
             if len(mems) == 1 and mems[0].model_id == model_id:
                 continue

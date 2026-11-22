@@ -27,6 +27,7 @@ class ModelSel(BaseModel):
     model_id: int
     name: Optional[str] = None   # public name on the unified endpoint (None = the upstream model id)
     aliases: list[str] = []      # extra names for the same model
+    disabled: bool = False       # kept in the list but not served
 
 
 class UnifiedIn(BaseModel):
@@ -39,7 +40,7 @@ def _load():
     with session() as s:
         gws = [g for g in s.exec(select(Gateway).order_by(Gateway.id)).all() if g.slug not in unified.HIDDEN_SLUGS]
         models: dict[int, list[str]] = {}
-        for gm in s.exec(select(GatewayModel).order_by(GatewayModel.id)).all():
+        for gm in s.exec(select(GatewayModel).where(GatewayModel.enabled == True).order_by(GatewayModel.id)).all():  # noqa: E712 (only served models can be a default)
             models.setdefault(gm.gateway_id, []).append(gm.public_name)
     return gws, models
 
@@ -53,7 +54,7 @@ def _direct_models(cfg: dict, aliases: list[dict]) -> list[dict]:
         for e in cfg["unified_models"]:
             m = s.get(Model, e["model_id"])
             if m:
-                out.append({"model_id": m.id, "name": e["name"], "aliases": e.get("aliases") or [], "alias": names.get(e["name"]), "upstream_id": m.upstream_id, "endpoint": eps.get(m.endpoint_id, "?"),
+                out.append({"model_id": m.id, "name": e["name"], "aliases": e.get("aliases") or [], "disabled": bool(e.get("disabled")), "alias": names.get(e["name"]), "upstream_id": m.upstream_id, "endpoint": eps.get(m.endpoint_id, "?"),
                             "capabilities": m.capabilities or [], "enabled": bool(m.enabled)})
     return out
 
@@ -164,7 +165,7 @@ def put_unified(body: UnifiedIn):
                 if name.lower() in names:
                     raise HTTPException(400, f"The name '{name}' is used twice")
                 names.add(name.lower())
-                entries.append({"model_id": m.id, "name": name, "aliases": _clean(sel.aliases)})
+                entries.append({"model_id": m.id, "name": name, "aliases": _clean(sel.aliases), "disabled": bool(sel.disabled)})
         vals["unified_models"] = entries
     if vals:
         _check_unique(vals)

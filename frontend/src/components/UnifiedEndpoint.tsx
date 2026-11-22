@@ -16,7 +16,7 @@ export default function UnifiedEndpoint() {
   const [copied, setCopied] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
-  const [dModels, setDModels] = useState<{ model_id: number; name: string; upstream_id: string; endpoint: string; aliases?: string[]; aliases_text?: string }[]>([]);  // upstream models exposed directly
+  const [dModels, setDModels] = useState<{ model_id: number; name: string; upstream_id: string; endpoint: string; aliases?: string[]; aliases_text?: string; disabled?: boolean }[]>([]);  // upstream models exposed directly
   const [allModels, setAllModels] = useState<any[]>([]);   // every model of every endpoint, for the picker
   const [pick, setPick] = useState("");
   const [keys, setKeys] = useState<any[]>([]);
@@ -37,7 +37,7 @@ export default function UnifiedEndpoint() {
   const save = async () => {
     setBusy(true); setMsg(null);
     try {
-      const v = await api("/api/unified", { method: "PUT", json: { enabled, gateways: exposed.map((r) => ({ id: r.id, model: r.model, aliases: split(r.aliases_text) })), models: dModels.map((m) => ({ model_id: m.model_id, name: m.name, aliases: split(m.aliases_text) })) } });
+      const v = await api("/api/unified", { method: "PUT", json: { enabled, gateways: exposed.map((r) => ({ id: r.id, model: r.model, aliases: split(r.aliases_text) })), models: dModels.map((m) => ({ model_id: m.model_id, name: m.name, aliases: split(m.aliases_text) , disabled: !!m.disabled})) } });
       apply(v); setMsg({ ok: true, text: "Saved. Changes apply within a few seconds." });
     } catch (e: any) { setMsg({ ok: false, text: e.message }); }
     setBusy(false);
@@ -85,7 +85,7 @@ export default function UnifiedEndpoint() {
         <button className="btn whitespace-nowrap" onClick={copy}>{copied ? <Check size={15} /> : <Copy size={15} />} {copied ? "Copied" : "Copy"}</button>
       </div>
 
-      <label className="lbl">Gateways to expose</label>
+      <label className="lbl">Gateways to expose <span className="font-normal normal-case text-[#6b7196]">· untick a gateway to stop serving it here; models disabled inside a gateway are skipped automatically</span></label>
       {rows.length === 0 ? (
         <div className="rounded-md border border-white/5 p-4 text-sm text-[#8a92a6]">No gateways yet. <Link to="/gateways/new" className="text-[#7d9be0] hover:underline">Create one</Link> first.</div>
       ) : (
@@ -100,7 +100,7 @@ export default function UnifiedEndpoint() {
                   ? <span className="chip" style={{ color: "#c2a05a", background: "#c2a05a22" }}><Lock size={11} /> API key</span>
                   : <span className="chip" style={{ color: "#8a92a6", background: "#8a92a622" }}>Open</span>}
               </label>
-              {r.models.length === 0 && <span className="text-xs text-[#6b7196]">no models configured</span>}
+              {r.models.length === 0 && <span className="text-xs text-[#6b7196]">no enabled models</span>}
               {r.exposed && r.models.length > 1 && (
                 <div className="flex items-center gap-2 text-xs text-[#8a92a6]">
                   <span>Default model</span>
@@ -128,11 +128,12 @@ export default function UnifiedEndpoint() {
       {dModels.length > 0 && (
         <div className="mb-3 divide-y divide-white/5 rounded-md border border-white/5">
           {dModels.map((m) => (
-            <div key={m.model_id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3.5 py-2.5 text-sm">
+            <div key={m.model_id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3.5 py-2.5 text-sm" style={m.disabled ? { opacity: 0.6 } : undefined}>
               <input className="input mono !w-auto min-w-[200px] flex-1 !py-1" value={m.name} maxLength={120} onChange={(e) => { setDModels(dModels.map((x) => (x.model_id === m.model_id ? { ...x, name: e.target.value } : x))); setDirty(true); }} />
               <input className="input mono !w-auto min-w-[200px] flex-1 !py-1 text-xs" value={m.aliases_text || ""} placeholder="also exposed as (optional): gpt-4o, claude-sonnet"
                 title="Extra names clients can use for this model" onChange={(e) => { setDModels(dModels.map((x) => (x.model_id === m.model_id ? { ...x, aliases_text: e.target.value } : x))); setDirty(true); }} />
               <span className="text-xs text-[#6b7196]"><span className="mono">{m.upstream_id}</span> @ {m.endpoint}</span>
+              <label className="btn cursor-pointer !px-2 !py-1" title="Turn the model off without removing it: requests for it get 404 and it is hidden from /models"><input type="checkbox" checked={!m.disabled} onChange={(e) => { setDModels(dModels.map((x) => (x.model_id === m.model_id ? { ...x, disabled: !e.target.checked } : x))); setDirty(true); }} /> Enabled</label>
               <button className="btn danger !px-2 !py-1" title="Remove" onClick={() => { setDModels(dModels.filter((x) => x.model_id !== m.model_id)); setDirty(true); }}><X size={14} /></button>
             </div>))}
         </div>

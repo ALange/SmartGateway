@@ -162,3 +162,20 @@ def test_unified_aliases(client):
     bad = client.put("/api/unified", json={"gateways": [{"id": g["id"], "aliases": ["same"]}, {"id": other["id"], "aliases": ["SAME"]}]})
     assert bad.status_code == 400
     client.put("/api/unified", json={"enabled": False, "gateways": []})
+
+
+def test_unified_direct_model_can_be_disabled(client):
+    with Session(db.engine) as s:
+        ep = Endpoint(name="ep-udis", base_url="http://127.0.0.1:1/v1", status="online"); s.add(ep); s.commit(); s.refresh(ep)
+        m = Model(endpoint_id=ep.id, upstream_id="udis-m", capabilities=["chat"], max_slots=2, context_length=8000, enabled=True); s.add(m); s.commit(); s.refresh(m)
+    sel = lambda off: {"enabled": True, "gateways": [], "models": [{"model_id": m.id, "name": "direct-x", "aliases": ["dx"], "disabled": off}]}  # noqa: E731
+    v = client.put("/api/unified", json=sel(False)).json()
+    assert v["model_names"] == ["direct-x", "dx"] and v["models"][0]["disabled"] is False
+    v = client.put("/api/unified", json=sel(True)).json()
+    assert v["model_names"] == [] and v["models"][0]["disabled"] is True and v["models"][0]["name"] == "direct-x"   # kept, not served
+    assert client.get("/unified/v1/models").json()["data"] == []
+    r = client.post("/unified/v1/chat/completions", json={"model": "direct-x", "messages": []})
+    assert r.status_code == 404
+    v = client.put("/api/unified", json=sel(False)).json()
+    assert v["model_names"] == ["direct-x", "dx"]
+    client.put("/api/unified", json={"enabled": False, "gateways": [], "models": []})
