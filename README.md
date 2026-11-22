@@ -13,6 +13,8 @@ context compression and live observability. It also combines remote **MCP server
   automatically per request. No switches to flip.
 - **Smart routing.** Capability matching (vision, audio, tools, reasoning), context-fit, slot-aware FIFO queueing, live slot sync,
   tiered small-to-large routing, fallbacks, sticky sessions, retries and circuit breaker.
+- **Council gateways (LLM council).** Ask several models the same question, let them review each other's answers anonymously, and have a
+  chairman model write one final answer, all behind a normal chat endpoint any client can use.
 - **Your names, your rules.** Expose models under your own public names, plus optional extra aliases (`gpt-4o`, `claude-sonnet`, ...)
   so existing clients work unchanged. A unified endpoint serves several gateways from one URL.
 - **MCP Servers and MCP Gateways.** Connect external MCP servers, then publish a curated mix of their tools, resources and prompts as
@@ -76,6 +78,29 @@ set a system prompt, default parameters, a max-tokens ceiling, caching and compr
 
 **Extra names (aliases):** a public model can have optional additional names. Clients may request any of them; the request is logged,
 cached and answered under the name used, and `/models` lists each one. Keys' allowed-model lists accept the canonical name or an alias.
+
+### Council gateways
+A **council** gateway turns several models into one better answer, behind an ordinary `chat/completions` URL (Gateways → **Council** tab).
+It works in three stages:
+
+1. **Councillors answer.** Up to 8 models receive the conversation in parallel and each writes its own answer.
+2. **Anonymous peer review.** Each reviewer sees the other answers as "Response A, B, C…" in random order, with no model names, ranks them
+   by accuracy and insight, and never reviews its own answer. Reviewers can be the councillors or a separate set of models, and the stage can be switched off.
+3. **The chairman decides.** One model reads the answers and the rankings and writes the single final answer for the user, without
+   mentioning the council.
+
+Every role is a public model of one of your existing gateways (or a single endpoint model), and each call goes through that gateway's
+normal pipeline, so its routing, failover, slots, caching, guardrails, API-key limits and request log all apply. Councils can be nested (up to 3 levels).
+
+- **Resilient:** set the minimum number of answers needed and a timeout per call; a slow or failing councillor is simply left out.
+- **Streaming progress:** streaming clients can receive "Stage 1: 2/3 answers in…" lines as reasoning text while the council works.
+- **Details on request:** add an `sg_council` field (all answers, reviews and the ranking) to a response, always or per request.
+- **Optional run history:** store every question, answer and review so you can open them from the logs. This keeps prompts and answers, which
+  the normal request log never does, so it is off by default and has its own retention window.
+- **Tunable:** edit the review and chairman prompts, cap tokens per call, and choose the public model name clients use.
+
+Typical use: a "research council" of three different providers with a strong chairman, for questions where one model's blind spots matter.
+It costs several model calls per question, so use it where quality matters more than latency.
 
 ### MCP Servers and MCP Gateways
 **MCP Servers** connects remote MCP servers (Streamable HTTP, with legacy SSE fallback). Headers such as `Authorization` are stored
