@@ -30,6 +30,7 @@ class MemberIn(BaseModel):
 
 class GatewayModelIn(BaseModel):
     public_name: str
+    enabled: bool = True
     aliases: list[str] = []  # additional exposed names for the same model
     strategy: Optional[str] = None
     sticky: bool = False
@@ -138,7 +139,7 @@ def apply_models(gw: Gateway, body: GatewayIn, s: Session):
         missing = guardrails.library.missing_refs(s, gmi.guardrails)
         if missing:
             raise HTTPException(400, f"Guardrails of '{gmi.public_name}' reference unknown content filters: {', '.join(missing)}")
-        gm = GatewayModel(gateway_id=gw.id, public_name=gmi.public_name.strip(), aliases=gmi.aliases or None, strategy=gmi.strategy or None,
+        gm = GatewayModel(gateway_id=gw.id, public_name=gmi.public_name.strip(), enabled=gmi.enabled, aliases=gmi.aliases or None, strategy=gmi.strategy or None,
                           sticky=gmi.sticky, system_prompt=gmi.system_prompt or None,
                           max_tokens_cap=gmi.max_tokens_cap or None, default_params=gmi.default_params or {},
                           cache_enabled=gmi.cache_enabled, cache_ttl=gmi.cache_ttl or None,

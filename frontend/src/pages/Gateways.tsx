@@ -68,9 +68,9 @@ export default function Gateways({ kind = "router" }: { kind?: "router" | "counc
             </div>
             <div className="mt-4 space-y-2">
               {g.models.map((m: any) => (
-                <div key={m.id} className="rounded-lg border border-white/5 bg-white/[0.02] p-3">
+                <div key={m.id} className="rounded-lg border border-white/5 bg-white/[0.02] p-3" style={m.enabled === false ? { opacity: 0.55 } : undefined}>
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="mono font-medium">{m.public_name}</span>
+                    <span className="mono font-medium">{m.public_name}{m.enabled === false && <span className="chip ml-2" title="Not served: requests get 404">disabled</span>}</span>
                     <div className="flex flex-wrap gap-1">{m.capabilities.map((c: string) => <CapChip key={c} cap={c} />)}</div>
                   </div>
                   {g.kind === "council"

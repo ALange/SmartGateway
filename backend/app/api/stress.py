@@ -31,7 +31,7 @@ async def start_stress(gw_id: int, body: StressIn):
         gw = s.get(Gateway, gw_id)
         if not gw:
             raise HTTPException(404, "Gateway not found")
-        gms = s.exec(select(GatewayModel).where(GatewayModel.gateway_id == gw_id)).all()
+        gms = s.exec(select(GatewayModel).where(GatewayModel.gateway_id == gw_id, GatewayModel.enabled == True)).all()  # noqa: E712
         s.expunge(gw)
     if not gms:
         raise HTTPException(400, "This gateway has no models")

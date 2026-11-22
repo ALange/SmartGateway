@@ -57,16 +57,16 @@ export default function GatewayLive() {
             <h3 className="mb-2 text-sm font-semibold">Use it</h3>
             <pre className="mono scroll-thin overflow-x-auto rounded-md bg-black/40 p-3 text-[11px] leading-relaxed text-[#9fb0ff]">{`curl ${gwUrl(gw.slug)}/chat/completions \\
 ${gw.has_keys ? `  -H "Authorization: Bearer <your-api-key>" \\\n` : ""}  -H "Content-Type: application/json" \\
-  -d '{"model":"${gw.models[0]?.public_name || "model"}",
+  -d '{"model":"${(gw.models.find((m: any) => m.enabled !== false) || gw.models[0])?.public_name || "model"}",
        "messages":[{"role":"user","content":"Hi"}]}'
 
 # Anthropic API too (Claude Code / Anthropic SDK)
 export ANTHROPIC_BASE_URL=${location.origin}/gw/${gw.slug}
 export ANTHROPIC_AUTH_TOKEN=${gw.has_keys ? "<your-api-key>" : "any-value"}
-export ANTHROPIC_MODEL=${gw.models[0]?.public_name || "model"}
+export ANTHROPIC_MODEL=${(gw.models.find((m: any) => m.enabled !== false) || gw.models[0])?.public_name || "model"}
 
 # Codex CLI (~/.codex/config.toml) - uses the Responses API
-model = "${gw.models[0]?.public_name || "model"}"
+model = "${(gw.models.find((m: any) => m.enabled !== false) || gw.models[0])?.public_name || "model"}"
 model_provider = "smartgateway"
 [model_providers.smartgateway]
 name = "SmartGateway"

@@ -111,7 +111,7 @@ def exposed(settings: Optional[dict] = None) -> list[dict]:
     with session() as s:
         gws = {g.id: g for g in s.exec(select(Gateway)).all()}
         models: dict[int, list[str]] = {}
-        for gm in s.exec(select(GatewayModel).order_by(GatewayModel.id)).all():
+        for gm in s.exec(select(GatewayModel).where(GatewayModel.enabled == True).order_by(GatewayModel.id)).all():  # noqa: E712
             models.setdefault(gm.gateway_id, []).append(gm.public_name)
     internal = next((g for g in gws.values() if g.slug == INTERNAL_SLUG), None)
     direct = [{"name": e["name"], "gateway": internal, "model": e["name"], "aliases": e.get("aliases") or []} for e in direct_cfg

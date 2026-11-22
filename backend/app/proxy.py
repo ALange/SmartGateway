@@ -195,7 +195,7 @@ def authenticate(slug: Optional[str], request: Request, allow_internal: bool = F
 def public_models(gw: Gateway, key=None) -> list[dict]:
     out = []
     with session() as s:
-        for gm in s.exec(select(GatewayModel).where(GatewayModel.gateway_id == gw.id)).all():
+        for gm in s.exec(select(GatewayModel).where(GatewayModel.gateway_id == gw.id, GatewayModel.enabled == True)).all():  # noqa: E712
             caps: set = set()
             for c in load_members(gm.id):
                 caps |= c.caps
@@ -304,11 +304,16 @@ def match_model(gms, wanted: str):
 async def dispatch(gw: Gateway, key, route: str, body: dict, form_files, headers_in):
     """Route one parsed request. Returns a FastAPI Response (JSON or streaming)."""
     with session() as s:
-        gms = s.exec(select(GatewayModel).where(GatewayModel.gateway_id == gw.id)).all()
-    if not gms:
+        every = s.exec(select(GatewayModel).where(GatewayModel.gateway_id == gw.id)).all()
+    gms = [g for g in every if g.enabled]
+    if not every:
         return err(404, "Gateway has no models configured", "not_found")
     wanted = str(body.get("model") or "").strip()
+    if not gms:
+        return err(404, "All models of this gateway are disabled", "model_not_found")
     gm, shown = match_model(gms, wanted)
+    if gm is None and match_model([g for g in every if not g.enabled], wanted)[0] is not None:
+        return err(404, f"Model '{wanted}' is disabled on this gateway. Available: " + ", ".join(n for g in gms for n in model_names(g)), "model_not_found")
     if gm is None and not wanted and len(gms) == 1:
         gm = gms[0]
         shown = gm.public_name

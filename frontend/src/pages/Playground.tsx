@@ -40,12 +40,12 @@ export default function Playground() {
         const picked = all.filter((x: any) => x.slug === "__unified__" ? (uni.models || []).length > 0 : exposed.some((r) => r.id === x.id));
         const flow = {
           id: "unified", slug: "unified", name: "Unified endpoint", strategy: "least_busy", gwIds: picked.map((x: any) => x.id),
-          models: picked.flatMap((x: any) => x.models.map((m: any) => ({ ...m, gw_id: x.id, label: x.slug === "__unified__" ? m.public_name : picked.length > 1 ? `${x.name}: ${m.public_name}` : m.public_name, strategy: m.strategy || x.strategy }))),
+          models: picked.flatMap((x: any) => x.models.filter((m: any) => m.enabled !== false).map((m: any) => ({ ...m, gw_id: x.id, label: x.slug === "__unified__" ? m.public_name : picked.length > 1 ? `${x.name}: ${m.public_name}` : m.public_name, strategy: m.strategy || x.strategy }))),
         };
         list = [...g, { id: -1, unified: true, flow, name: "Unified endpoint", models: (uni.model_names || []).map((n: string) => ({ id: n, public_name: n, capabilities: [], members: [] })) }];
       }
       setGws(list);
-      if (list[0]) { setGid(list[0].id); setModel(list[0].models[0]?.public_name || ""); }
+      if (list[0]) { setGid(list[0].id); setModel((list[0].models.find((m: any) => m.enabled !== false) || list[0].models[0])?.public_name || ""); }
     });
   }, []);
   useEffect(() => { bottom.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs]);
@@ -141,10 +141,10 @@ export default function Playground() {
       <div className="grid gap-5 lg:grid-cols-[280px_1fr]">
         <div className="card card-pad space-y-4 self-start">
           <div><label className="lbl">Gateway</label>
-            <select className="input" value={gid ?? ""} onChange={(e) => { const g = gws.find((x) => x.id === +e.target.value); setGid(g.id); setModel(g.models[0]?.public_name || ""); }}>{gws.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}</select></div>
+            <select className="input" value={gid ?? ""} onChange={(e) => { const g = gws.find((x) => x.id === +e.target.value); setGid(g.id); setModel((g.models.find((m: any) => m.enabled !== false) || g.models[0])?.public_name || ""); }}>{gws.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}</select></div>
           {gw?.unified && <div><label className="lbl">Unified API key (only if one is configured)</label><input className="input mono" value={token} onChange={(e) => setToken(e.target.value)} placeholder="sk-..." /></div>}
           <div><label className="lbl">Model</label>
-            <select className="input mono" value={model} onChange={(e) => setModel(e.target.value)}>{gw?.models.map((m: any) => <option key={m.id}>{m.public_name}</option>)}</select>
+            <select className="input mono" value={model} onChange={(e) => setModel(e.target.value)}>{gw?.models.filter((m: any) => m.enabled !== false).map((m: any) => <option key={m.id}>{m.public_name}</option>)}</select>
             <div className="mt-2 flex flex-wrap gap-1">{caps.map((c) => <CapChip key={c} cap={c} />)}</div></div>
           <div><label className="lbl">System prompt</label><textarea className="input" rows={3} value={system} onChange={(e) => setSystem(e.target.value)} /></div>
           <div><label className="lbl">Temperature · {temp}</label><input type="range" min={0} max={2} step={0.1} value={temp} onChange={(e) => setTemp(+e.target.value)} className="w-full" /></div>

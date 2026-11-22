@@ -51,6 +51,7 @@ class GatewayModel(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     gateway_id: int = Field(foreign_key="gateway.id", index=True)
     public_name: str
+    enabled: bool = True  # False: kept in the gateway but not served (requests get 404, hidden from /models)
     aliases: Optional[list] = Field(default=None, sa_column=Column(JSON))  # extra names this model is also exposed under
     strategy: Optional[str] = None  # overrides gateway strategy
     sticky: bool = False
