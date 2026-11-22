@@ -191,8 +191,10 @@ if os.path.isdir(config.STATIC_DIR):
     def spa(full_path: str):
         if full_path.startswith(("api/", "gw/", "v1/", "unified/", "mcp/")):
             return JSONResponse({"error": "not found"}, status_code=404)
-        f = os.path.join(config.STATIC_DIR, full_path)
-        if full_path and os.path.isfile(f):
+        # only files inside the static dir are served: resolve symlinks/".." and absolute paths first
+        root = os.path.realpath(config.STATIC_DIR)
+        f = os.path.realpath(os.path.join(root, full_path))
+        if full_path and f.startswith(root + os.sep) and os.path.isfile(f):
             return FileResponse(f)
         # the HTML shell must always be revalidated so a new deploy is picked up (assets are content-hashed)
         return FileResponse(os.path.join(config.STATIC_DIR, "index.html"), headers={"Cache-Control": "no-cache"})
