@@ -67,7 +67,14 @@ async def test_stream_strict_thinking_ping_input_tokens_and_error():
         yield 'data: {"choices":[{"delta":{"content":"a"}}]}'
         raise RuntimeError("boom")
     out = [e async for e in anth.stream_from_chat(broken(), "pub", True)]
-    assert out[-1].startswith("event: error") and "boom" in out[-1]
+    assert out[-1].startswith("event: error") and "boom" not in out[-1]      # the public gets a generic message ...
+    from app.runtime_ctx import verbose
+    tok = verbose.set(True)
+    try:
+        out = [e async for e in anth.stream_from_chat(broken(), "pub", True)]
+    finally:
+        verbose.reset(tok)
+    assert out[-1].startswith("event: error") and "boom" in out[-1]           # ... the admin sees the cause
     with pytest.raises(RuntimeError):
         [e async for e in anth.stream_from_chat(broken(), "pub")]
 

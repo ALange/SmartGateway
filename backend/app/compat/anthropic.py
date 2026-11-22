@@ -5,6 +5,8 @@ import time
 import uuid
 from typing import AsyncIterator
 
+from ..runtime_ctx import verbose
+
 STOP_MAP = {"stop": "end_turn", "length": "max_tokens", "tool_calls": "tool_use", "content_filter": "end_turn"}
 
 
@@ -258,7 +260,7 @@ async def stream_from_chat(lines: AsyncIterator[str], public_model: str, strict:
     except Exception as e:  # noqa: BLE001  strict: tell the client instead of cutting the stream
         if not strict:
             raise
-        yield _sse("error", {"type": "error", "error": {"type": "api_error", "message": f"Upstream stream failed: {e}"}})
+        yield _sse("error", {"type": "error", "error": {"type": "api_error", "message": f"Upstream stream failed: {e}" if verbose.get() else "The upstream model server failed while answering."}})
         return
     c = close()
     if c:

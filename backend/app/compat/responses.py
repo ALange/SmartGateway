@@ -8,6 +8,8 @@ import time
 import uuid
 from typing import AsyncIterator
 
+from ..runtime_ctx import verbose
+
 
 def _id(prefix: str) -> str:
     return prefix + uuid.uuid4().hex[:16]
@@ -280,7 +282,7 @@ async def stream_from_chat(lines: AsyncIterator[str], public_model: str, req: di
             if ch.get("finish_reason"):
                 finish = ch["finish_reason"]
     except Exception as e:  # noqa: BLE001
-        failed = str(e)
+        failed = str(e) if verbose.get() else "The upstream model server failed while answering."
     for e in close():
         yield e
     if not items and failed is None:   # an empty answer still needs one message item

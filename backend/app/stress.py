@@ -17,7 +17,7 @@ from sqlmodel import select
 from . import stress_metrics as sm
 from .db import session
 from .models import Gateway, StressRun
-from .runtime_ctx import no_request_log
+from .runtime_ctx import no_request_log, verbose
 
 KEEP_RUNS_PER_GATEWAY = 20
 DRAIN_MIN_SECONDS = 30
@@ -259,6 +259,7 @@ async def _worker(job: Job, deadline: float, records: list) -> None:
 
 async def _run(job: Job) -> None:
     no_request_log.set(True)
+    verbose.set(True)
     stage_s = job.cfg["stage_seconds"]
     tasks: list[asyncio.Task] = []
     try:

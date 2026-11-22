@@ -17,6 +17,7 @@ from sqlmodel import select
 from pydantic import BaseModel
 
 from . import audit, config, crypto, proxy, retention
+from .bodylimit import BodyLimit
 from .api import compression as compression_api, mcp_endpoints as mcp_endpoints_api, mcp_gateways as mcp_gateways_api, content_filters as content_filters_api, endpoints, gateways, insights as insights_api, maintenance as maintenance_api, settings as settings_api, stats, stress as stress_api, unified as unified_api
 from .db import engine, init_db, session
 from .mcp import registry as mcp_registry, server as mcp_server
@@ -96,6 +97,22 @@ def request_authed(headers, cookies) -> bool:
     return False
 
 
+_ip_hits: dict[str, list] = {}
+IP_RPM = int(os.environ.get("SG_IP_RPM", "0") or 0)   # optional per-client-IP limit (requests/minute) on the public gateway URLs; 0 = off
+
+
+def _ip_limited(ip: str) -> bool:
+    """Sliding one-minute window per client IP. Protects open gateways (no API key) from being hammered; keyed gateways have their own limits."""
+    now = time.time()
+    if len(_ip_hits) > 5000:
+        for k in [k for k, v in _ip_hits.items() if not v or now - v[-1] > 60]:
+            _ip_hits.pop(k, None)
+    w = [t for t in _ip_hits.get(ip, []) if now - t < 60]
+    w.append(now)
+    _ip_hits[ip] = w
+    return len(w) > IP_RPM
+
+
 def _locked(ip: str) -> bool:
     """True while this client has too many recent failed admin logins (shared by the login form and Basic/Bearer API calls)."""
     now = time.time()
@@ -114,6 +131,8 @@ def _fail(ip: str) -> None:
     f[0] += 1
 
 
+CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; "
+       "img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'")
 CORS_ORIGINS = [o.strip() for o in os.environ.get("SG_CORS_ORIGINS", "").split(",") if o.strip()]
 
 
@@ -121,6 +140,8 @@ CORS_ORIGINS = [o.strip() for o in os.environ.get("SG_CORS_ORIGINS", "").split("
 async def guard(request: Request, call_next):
     p = request.url.path
     is_gateway = p.startswith(("/gw/", "/v1/", "/unified/", "/mcp/"))
+    if is_gateway and IP_RPM and request.method != "OPTIONS" and _ip_limited(request.client.host if request.client else "?"):
+        return JSONResponse({"error": {"message": "Too many requests from this address", "type": "rate_limit_exceeded", "code": 429}}, status_code=429, headers={"Retry-After": "30"})
     # CORS for the OpenAI-compatible surface only
     cors = {}
     if is_gateway and CORS_ORIGINS:
@@ -151,10 +172,13 @@ async def guard(request: Request, call_next):
     for k, v in cors.items():
         resp.headers[k] = v
     resp.headers.setdefault("X-Content-Type-Options", "nosniff")
-    if not is_gateway:   # the admin UI must not be framed (clickjacking)
+    if request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https":
+        resp.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
+    if not is_gateway:   # the admin UI must not be framed (clickjacking) and may only load its own scripts
         resp.headers.setdefault("X-Frame-Options", "DENY")
-        resp.headers.setdefault("Content-Security-Policy", "frame-ancestors 'none'")
+        resp.headers.setdefault("Content-Security-Policy", CSP)
         resp.headers.setdefault("Referrer-Policy", "same-origin")
+        resp.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
     return resp
 
 
@@ -169,8 +193,8 @@ class LoginIn(BaseModel):
 
 @app.get("/api/session")
 def session_info(request: Request):
-    return {"auth_required": bool(config.ADMIN_PASSWORD), "authenticated": request_authed(request.headers, request.cookies),
-            "password_source": config.PASSWORD_SOURCE}
+    authed = request_authed(request.headers, request.cookies)
+    return {"auth_required": bool(config.ADMIN_PASSWORD), "authenticated": authed, **({"password_source": config.PASSWORD_SOURCE} if authed else {})}
 
 
 class PasswordIn(BaseModel):
@@ -233,6 +257,7 @@ def healthz():
     return {"ok": True}
 
 
+app.add_middleware(BodyLimit)   # added after the guard middleware, so it is the outermost layer
 app.include_router(endpoints.router)
 app.include_router(gateways.router)
 app.include_router(stats.router)

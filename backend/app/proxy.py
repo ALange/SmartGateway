@@ -1,6 +1,7 @@
 """OpenAI-compatible gateway surface with smart routing, per-key limits, caching and API compat layers."""
 import asyncio
 import hashlib
+import hmac
 import json
 import logging
 import re
@@ -24,7 +25,7 @@ from .compression import pipeline as comp_pipeline
 from .compression.aligner import analyze_alignment
 from .compression.context import analyze_context
 from .models import ApiKey, CompressionEvent, Endpoint, Gateway, GatewayModel, Member, Model, RequestLog
-from .runtime_ctx import no_request_log
+from .runtime_ctx import no_request_log, verbose
 from .router import affinity, cache, health
 from .router.limits import LimitError, limiter
 from .router.scheduler import NoCandidates, NoCapacity, scheduler
@@ -40,6 +41,21 @@ CHAT_ROUTES = {"chat/completions", "completions"}
 SUPPORTED = CHAT_ROUTES | {"embeddings", "audio/transcriptions", "audio/translations", "audio/speech",
                            "images/generations", "images/edits", "models"}
 HOP = {"content-length", "transfer-encoding", "connection", "content-encoding", "keep-alive"}
+# Upstream response headers that must never reach a gateway client: cookies would be set on the gateway's origin, CORS headers would open
+# the gateway to any website in a browser, and server/proxy banners reveal the upstream stack.
+_STRIP_UP = HOP | {"set-cookie", "set-cookie2", "server", "x-powered-by", "via", "alt-svc", "report-to", "nel", "strict-transport-security",
+                   "content-security-policy", "x-frame-options", "www-authenticate", "proxy-authenticate"}
+
+
+def up_headers(h) -> dict:
+    return {k: v for k, v in h.items() if k.lower() not in _STRIP_UP and not k.lower().startswith(("access-control-", "cf-", "x-amz", "x-envoy", "x-forwarded"))}
+
+
+def public_error(error: str, attempts: int = 0) -> str:
+    """Client-facing text for an upstream failure; the full text only goes to the log and to the admin."""
+    if verbose.get():
+        return f"Upstream failed after {attempts} attempt(s): {error}"
+    return "The upstream model server failed to answer. Try again later." if attempts else "No upstream model server is available. Try again later."
 OVERFLOW_RX = re.compile(r"(context (length|size|window)|exceeds? the (available )?context|maximum context|"
                          r"too many tokens|prompt is too long|n_ctx|exceed_context)", re.I)
 
@@ -184,7 +200,7 @@ def authenticate(slug: Optional[str], request: Request, allow_internal: bool = F
             return gw, None, None  # open gateway
         if key is None and token:
             key = next((k for k in keys if k.key_hash == hash_key(token)), None)
-        if key is None and gw.api_key and token and token == gw.api_key:  # un-migrated legacy key
+        if key is None and gw.api_key and token and hmac.compare_digest(token.encode(), gw.api_key.encode()):  # un-migrated legacy key
             return gw, None, None
         if key is None or not key.enabled or (key.expires_at and key.expires_at < time.time()):
             return None, None, err(401, "Invalid or missing gateway API key", "invalid_api_key")
@@ -536,7 +552,7 @@ async def _route(gw, gm, key, route, body, form_files, headers_in, token, prompt
             await emit(L(gateway_id=gw.id, key_id=key_id, public_model=gm.public_name, route=route,
                                          requirements=req_label, status=502, ok=False, attempts=attempts,
                                          total_ms=int((time.time() - t0) * 1000), error=last_error))
-            return err(502, f"All upstreams unavailable: {last_error}", "upstream_error")
+            return err(502, public_error(last_error) if not verbose.get() else f"All upstreams unavailable: {last_error}", "upstream_error")
         except NoCapacity:
             events.publish({"type": "end", "ok": False, "status": 429, **base_evt})
             await emit(L(gateway_id=gw.id, key_id=key_id, public_model=gm.public_name, route=route,
@@ -670,11 +686,11 @@ async def _route(gw, gm, key, route, body, form_files, headers_in, token, prompt
 
     if skey is not None:
         affinity.put(gm.id, skey, c.member_id)
-    out_headers = {k: v for k, v in resp.headers.items() if k.lower() not in HOP}
+    out_headers = up_headers(resp.headers)
     if gr_failed:
         out_headers["X-SG-Guardrail"] = "output-invalid"
-    out_headers.update({"X-SG-Request-Id": rid, "X-SG-Upstream": c.upstream_id, "X-SG-Endpoint": c.endpoint_name,
-                        "X-SG-Queue-Ms": str(queue_ms), "X-SG-Attempts": str(attempts),
+    out_headers.update({"X-SG-Request-Id": rid,
+                        **({"X-SG-Upstream": c.upstream_id, "X-SG-Endpoint": c.endpoint_name, "X-SG-Queue-Ms": str(queue_ms), "X-SG-Attempts": str(attempts)} if verbose.get() else {}),
                         **({"X-SG-Compressed": str(compressed_tokens)} if compressed_tokens else {}),
                         "Access-Control-Expose-Headers": "X-SG-Request-Id,X-SG-Upstream,X-SG-Endpoint,X-SG-Queue-Ms,X-SG-Attempts,X-SG-Cache,X-SG-Compressed"})
     rec = L(gateway_id=gw.id, key_id=key_id, public_model=gm.public_name, endpoint_id=c.endpoint_id,
@@ -700,7 +716,7 @@ async def _route(gw, gm, key, route, body, form_files, headers_in, token, prompt
         except Exception as e:  # noqa: BLE001
             await resp.aclose()
             await finalize(False, f"read error: {e}")
-            return err(502, f"Upstream read error: {e}", "upstream_error")
+            return err(502, f"Upstream read error: {e}" if verbose.get() else public_error("", 1), "upstream_error")
         await resp.aclose()
         rec.ttft_ms = int((time.time() - t_send) * 1000)
         ctype = resp.headers.get("content-type", "")
@@ -831,7 +847,7 @@ async def _finish_error(gw, gm, key_id, route, req_label, status, error, attempt
     await (emit or log_request)((L or RequestLog)(gateway_id=gw.id, key_id=key_id, public_model=gm.public_name, route=route,
                                  requirements=req_label, status=status, ok=False, attempts=attempts,
                                  queue_ms=queue_ms, total_ms=int((time.time() - t0) * 1000), error=error))
-    return err(status, f"Upstream failed after {attempts} attempt(s): {error}", "upstream_error")
+    return err(status, public_error(error, attempts), "upstream_error")
 
 
 # ---------------------------------------------------------------- HTTP entry points
@@ -1057,6 +1073,7 @@ async def _compat_error(e: JSONResponse, path: str, request: Optional[Request] =
 @router.api_route("/api/admin-gw/{slug}/v1/{path:path}", methods=["GET", "POST"])
 async def admin_gw_route(slug: str, path: str, request: Request):
     """Used by the admin UI (Test dialog, Playground): same pipeline, no API key, protected by admin auth."""
+    verbose.set(True)   # admin-only route: show routing headers and full upstream errors
     with session() as s:
         gw = s.exec(select(Gateway).where(Gateway.slug == slug)).first()
     if not gw or gw.slug == "__council__":

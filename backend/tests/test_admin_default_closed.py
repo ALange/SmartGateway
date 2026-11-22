@@ -41,7 +41,7 @@ def test_password_change_via_api(tmp_path, monkeypatch):
     main._fails.clear()
     c = TestClient(main.app)
     h = {"Authorization": f"Bearer {old}"}
-    assert c.get("/api/session").json()["password_source"] == "generated"
+    assert c.get("/api/session", headers=h).json()["password_source"] == "generated"
     url = "/api/admin/password"
     assert c.post(url, json={"current": "x", "new": "a-long-new-password"}).status_code == 401      # needs admin auth
     assert c.post(url, headers=h, json={"current": "wrong", "new": "a-long-new-password"}).status_code == 403

@@ -195,8 +195,20 @@ API keys of a gateway.
 - The gateway **Test** dialog and Playground send OpenAI-format requests.
 
 ## Development
-`cd backend && pip install -r requirements.txt && pytest` (Python 3.11–3.12) · `cd frontend && npm i && npm run dev` ·
+`cd backend && pip install -r requirements-dev.txt && pytest` (Python 3.11–3.12) · `cd frontend && npm i && npm run dev` ·
 `python tools/e2e_stress.py` covers the stress test · `python tools/e2e_stream_cache.py` covers streaming cache · `python tools/e2e_compression.py` covers compression/alignment/insights · `python tools/e2e_redis.py` (needs Docker; starts temporary Redis containers) covers the cache/Redis scenarios · `python tools/e2e_v2.py` runs an end-to-end suite against throw-away mock upstreams and a temporary gateway (never touches your data).
+
+## Exposing it to the internet
+
+The admin UI and API always require a password (see Configuration), but the gateway URLs themselves are only as closed as you make them. Checklist:
+
+- **Put a TLS reverse proxy in front** (Caddy, nginx, Traefik) and set `SG_FORWARDED_ALLOW_IPS` to the proxy's address, so login lockouts, the audit log and rate limits see the real client IP. Without it every visitor looks like the proxy. `Strict-Transport-Security` is sent automatically over HTTPS.
+- **Give every public gateway, unified endpoint and MCP gateway an API key.** A gateway without keys is open to anyone who can reach the URL and spends your upstream capacity. Set `SG_IP_RPM` (requests per minute per client IP, 0 = off) as a second line of defence.
+- **Set your own long `SG_ADMIN_PASSWORD`** (or change the generated one in Settings → Security). Failed logins are rate-limited per IP.
+- Consider not publishing the admin UI at all: route only `/gw/`, `/v1/`, `/unified/` and `/mcp/` through the public proxy and keep `/` and `/api/` on a private network or VPN.
+- Request bodies are capped (`SG_MAX_BODY_MB`, default 100 for gateway calls; `SG_MAX_ADMIN_BODY_MB`, default 20). Public error messages are generic; full upstream errors and routing headers are only shown to the signed-in admin (`SG_VERBOSE_ERRORS=1` shows them to everyone, for private networks).
+- Upstream response headers such as cookies, CORS and server banners are never passed on to clients. The container runs as a non-root user and its dependencies are pinned to patched releases (`backend/requirements.txt`); rebuild regularly.
+- Content filter regexes are written by the admin and run on client text: avoid patterns with nested quantifiers.
 
 ## Security notes for contributors
 

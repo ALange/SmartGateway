@@ -96,7 +96,7 @@ async def test_stream_empty_truncated_and_failed():
         yield 'data: {"choices":[{"delta":{"content":"a"}}]}'
         raise RuntimeError("boom")
     bad = evs([e async for e in r.stream_from_chat(broken(), "pub")])
-    assert bad[-1]["type"] == "response.failed" and "boom" in bad[-1]["response"]["error"]["message"]
+    assert bad[-1]["type"] == "response.failed" and "boom" not in bad[-1]["response"]["error"]["message"]
 
 
 # ------------------------------------------------------------------ through a gateway
