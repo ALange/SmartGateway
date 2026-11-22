@@ -10,6 +10,7 @@ RUN npm run build
 FROM python:3.12-slim
 ENV PYTHONUNBUFFERED=1 SG_DATA_DIR=/data SG_STATIC_DIR=/app/static
 WORKDIR /app
+RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin sg && mkdir -p /data && chown sg:sg /data
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/app ./app

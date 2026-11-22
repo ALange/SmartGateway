@@ -2,6 +2,7 @@ import asyncio
 import base64
 import hashlib
 import hmac
+import logging
 import os
 import secrets
 import time
@@ -26,6 +27,12 @@ from .router import health
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    log = logging.getLogger("smartgateway")
+    if config.GENERATED_ADMIN_PASSWORD:
+        print(f"SmartGateway: SG_ADMIN_PASSWORD is not set, so a random admin password was generated (user '{os.environ.get('SG_ADMIN_USER', 'admin')}'): "
+              f"{config.ADMIN_PASSWORD}  (stored in {config.DATA_DIR}/admin_password; set SG_ADMIN_PASSWORD to choose your own)", flush=True)
+    elif not config.ADMIN_PASSWORD:
+        log.warning("SG_ALLOW_OPEN_ADMIN is set: the web UI and management API are open to anyone who can reach this port")
     with session() as s:
         for e in s.exec(select(Endpoint)).all():
             health.status[e.id] = e.status
@@ -45,6 +52,7 @@ async def lifespan(app: FastAPI):
     await proxy.client.aclose()
 
 
+config.ensure_admin_password()
 app = FastAPI(title="SmartGateway", lifespan=lifespan)
 
 
@@ -54,7 +62,9 @@ _fails: dict[str, list] = {}
 
 
 def _sign(exp: int) -> str:
-    return hmac.new(crypto._load_secret(), f"admin:{exp}".encode(), hashlib.sha256).hexdigest()
+    # the password is part of the signed text, so changing SG_ADMIN_PASSWORD signs every existing session out
+    pw = hashlib.sha256(config.ADMIN_PASSWORD.encode()).hexdigest()
+    return hmac.new(crypto._load_secret(), f"admin:{exp}:{pw}".encode(), hashlib.sha256).hexdigest()
 
 
 def make_session() -> str:
@@ -86,6 +96,24 @@ def request_authed(headers, cookies) -> bool:
     return False
 
 
+def _locked(ip: str) -> bool:
+    """True while this client has too many recent failed admin logins (shared by the login form and Basic/Bearer API calls)."""
+    now = time.time()
+    if len(_fails) > 1000:   # forget old entries so the table cannot grow without bound
+        for k in [k for k, v in _fails.items() if now - v[1] > 300]:
+            _fails.pop(k, None)
+    f = _fails.get(ip)
+    if f and now - f[1] > 300:
+        _fails.pop(ip, None)
+        return False
+    return bool(f and f[0] >= 5)
+
+
+def _fail(ip: str) -> None:
+    f = _fails.setdefault(ip, [0, time.time()])
+    f[0] += 1
+
+
 CORS_ORIGINS = [o.strip() for o in os.environ.get("SG_CORS_ORIGINS", "").split(",") if o.strip()]
 
 
@@ -105,7 +133,12 @@ async def guard(request: Request, call_next):
             return Response(status_code=204, headers=cors)
     # admin protection for the management API (UI shell stays public so the login page can load)
     if config.ADMIN_PASSWORD and p.startswith("/api/") and p not in ("/api/login", "/api/session", "/api/ws"):
+        ip = request.client.host if request.client else "?"
         if not request_authed(request.headers, request.cookies):
+            if request.headers.get("authorization"):   # a wrong password was presented: count it, like the login form does
+                if _locked(ip):
+                    return JSONResponse({"detail": "Too many failed attempts, try again in a few minutes"}, status_code=429)
+                _fail(ip)
             return JSONResponse({"detail": "Unauthorized"}, status_code=401)
     audited = None if is_gateway else audit.classify(request.method, p)
     fields: list = []
@@ -117,6 +150,11 @@ async def guard(request: Request, call_next):
                      audited["target_id"], resp.status_code, request.method, p, fields)
     for k, v in cors.items():
         resp.headers[k] = v
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    if not is_gateway:   # the admin UI must not be framed (clickjacking)
+        resp.headers.setdefault("X-Frame-Options", "DENY")
+        resp.headers.setdefault("Content-Security-Policy", "frame-ancestors 'none'")
+        resp.headers.setdefault("Referrer-Policy", "same-origin")
     return resp
 
 
@@ -137,19 +175,16 @@ def session_info(request: Request):
 @app.post("/api/login")
 def login(body: LoginIn, request: Request):
     ip = request.client.host if request.client else "?"
-    f = _fails.setdefault(ip, [0, time.time()])
-    if time.time() - f[1] > 300:
-        f[0], f[1] = 0, time.time()
-    if f[0] >= 5:
+    if _locked(ip):
         return JSONResponse({"detail": "Too many failed attempts, try again in a few minutes"}, status_code=429)
     ok = (not config.ADMIN_PASSWORD) or (
         secrets.compare_digest(body.password, config.ADMIN_PASSWORD)
         and secrets.compare_digest(body.username, os.environ.get("SG_ADMIN_USER", "admin")))
     if not ok:
-        f[0] += 1
+        _fail(ip)
         audit.record(body.username[:60], ip, "login failed", "session", status=401, method="POST", path="/api/login")
         return JSONResponse({"detail": "Invalid credentials"}, status_code=401)
-    f[0] = 0
+    _fails.pop(ip, None)
     audit.record(body.username[:60], ip, "login", "session", method="POST", path="/api/login")
     r = JSONResponse({"ok": True})
     secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
