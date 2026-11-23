@@ -4,6 +4,10 @@
 (llama.cpp, vLLM, Ollama, hosted APIs, ...) and gives your tools a single, stable URL, with smart routing, per-client keys, caching,
 context compression and live observability. It also combines remote **MCP servers** into one MCP endpoint.
 
+[![Watch the 1-minute SmartGateway overview](docs/video/poster.png)](docs/video/SmartGateway-promo.mp4)
+
+<sub>▶ Click to watch the 1-minute overview (with sound).</sub>
+
 [![Dashboard](docs/screenshots/dashboard.png)](docs/screenshots/dashboard.png)
 
 ## Highlights
