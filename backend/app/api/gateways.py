@@ -32,6 +32,7 @@ class GatewayModelIn(BaseModel):
     public_name: str
     enabled: bool = True
     aliases: list[str] = []  # additional exposed names for the same model
+    voices: list[str] = []  # TTS: voices listed by GET /audio/voices when the upstream does not serve them
     strategy: Optional[str] = None
     sticky: bool = False
     system_prompt: Optional[str] = None
@@ -57,6 +58,16 @@ class GatewayIn(BaseModel):
     models: list[GatewayModelIn] = []
     kind: str = "router"          # router | council
     council: Optional[dict] = None  # council config (see council.py); for a council, `models` holds just its public model's settings
+
+
+def clean_voices(voices) -> list[str]:
+    """Trimmed, de-duplicated voice names (at most 200 entries of 64 characters)."""
+    out: list[str] = []
+    for v in voices or []:
+        v = str(v).strip()[:64]
+        if v and v not in out:
+            out.append(v)
+    return out[:200]
 
 
 def slugify(s: str) -> str:
@@ -139,7 +150,7 @@ def apply_models(gw: Gateway, body: GatewayIn, s: Session):
         missing = guardrails.library.missing_refs(s, gmi.guardrails)
         if missing:
             raise HTTPException(400, f"Guardrails of '{gmi.public_name}' reference unknown content filters: {', '.join(missing)}")
-        gm = GatewayModel(gateway_id=gw.id, public_name=gmi.public_name.strip(), enabled=gmi.enabled, aliases=gmi.aliases or None, strategy=gmi.strategy or None,
+        gm = GatewayModel(gateway_id=gw.id, public_name=gmi.public_name.strip(), enabled=gmi.enabled, aliases=gmi.aliases or None, voices=clean_voices(gmi.voices) or None, strategy=gmi.strategy or None,
                           sticky=gmi.sticky, system_prompt=gmi.system_prompt or None,
                           max_tokens_cap=gmi.max_tokens_cap or None, default_params=gmi.default_params or {},
                           cache_enabled=gmi.cache_enabled, cache_ttl=gmi.cache_ttl or None,

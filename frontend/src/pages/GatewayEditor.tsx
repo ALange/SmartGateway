@@ -6,7 +6,7 @@ import { CapChip, PageHeader } from "../components/ui";
 import KeysPanel from "../components/KeysPanel";
 import GuardrailsEditor from "../components/GuardrailsEditor";
 
-const blankModel = () => ({ public_name: "", enabled: true, aliases_text: "", strategy: "", sticky: false, system_prompt: "", max_tokens_cap: "", default_params: "", cache_enabled: false, cache_ttl: "", cache_any_temperature: false, cache_streaming: true, cache_replay_speed: "instant", compress_mode: "", guardrails: null as any, members: [] as any[] });
+const blankModel = () => ({ public_name: "", enabled: true, aliases_text: "", voices_text: "", strategy: "", sticky: false, system_prompt: "", max_tokens_cap: "", default_params: "", cache_enabled: false, cache_ttl: "", cache_any_temperature: false, cache_streaming: true, cache_replay_speed: "instant", compress_mode: "", guardrails: null as any, members: [] as any[] });
 
 export default function GatewayEditor() {
   const { id } = useParams();
@@ -20,7 +20,7 @@ export default function GatewayEditor() {
     api("/api/endpoints").then(setEps);
     api("/api/cache/stats").then((c) => setCacheBackend(c.backend === "redis" ? (c.state === "error" ? "redis (down → memory)" : "redis") : "in-memory")).catch(() => {});
     if (id) api(`/api/gateways/${id}`).then((g) => setF({
-      ...g, models: g.models.map((m: any) => ({ ...m, aliases_text: (m.aliases || []).join(", "), strategy: m.strategy || "", system_prompt: m.system_prompt || "", max_tokens_cap: m.max_tokens_cap ?? "", cache_ttl: m.cache_ttl ?? "", compress_mode: m.compress_mode || "", guardrails: m.guardrails || null,
+      ...g, models: g.models.map((m: any) => ({ ...m, aliases_text: (m.aliases || []).join(", "), voices_text: (m.voices || []).join(", "), strategy: m.strategy || "", system_prompt: m.system_prompt || "", max_tokens_cap: m.max_tokens_cap ?? "", cache_ttl: m.cache_ttl ?? "", compress_mode: m.compress_mode || "", guardrails: m.guardrails || null,
         default_params: m.default_params && Object.keys(m.default_params).length ? JSON.stringify(m.default_params, null, 2) : "" })) }));
   }, [id]);
 
@@ -34,7 +34,7 @@ export default function GatewayEditor() {
     let models;
     try {
       models = f.models.map((m: any) => ({
-        public_name: m.public_name, enabled: m.enabled !== false, aliases: String(m.aliases_text || "").split(/[,\n]/).map((x: string) => x.trim()).filter(Boolean), strategy: m.strategy || null, sticky: !!m.sticky, system_prompt: m.system_prompt || null,
+        public_name: m.public_name, enabled: m.enabled !== false, aliases: String(m.aliases_text || "").split(/[,\n]/).map((x: string) => x.trim()).filter(Boolean), voices: String(m.voices_text || "").split(/[,\n]/).map((x: string) => x.trim()).filter(Boolean), strategy: m.strategy || null, sticky: !!m.sticky, system_prompt: m.system_prompt || null,
         max_tokens_cap: m.max_tokens_cap ? +m.max_tokens_cap : null,
         cache_enabled: !!m.cache_enabled, cache_streaming: !!m.cache_streaming, cache_replay_speed: m.cache_replay_speed || "instant", compress_mode: m.compress_mode || null, guardrails: m.guardrails || null, cache_ttl: m.cache_ttl ? +m.cache_ttl : null, cache_any_temperature: !!m.cache_any_temperature,
         default_params: m.default_params?.trim() ? JSON.parse(m.default_params) : {},
@@ -83,6 +83,11 @@ export default function GatewayEditor() {
                 <label className="btn cursor-pointer" title="Turn the model off without deleting it: requests for it get 404 and it is hidden from /v1/models. Its settings and upstreams are kept."><input type="checkbox" checked={m.enabled !== false} onChange={(e) => setModel(i, { enabled: e.target.checked })} /> Enabled</label>
                 <button className="btn danger" onClick={() => setF({ ...f, models: f.models.filter((_: any, j: number) => j !== i) })}><Trash2 size={15} /></button>
               </div>
+              {caps.has("tts") && (
+                <div className="mt-3"><label className="lbl">Voices (optional, comma separated)</label>
+                  <input className="input mono" value={m.voices_text || ""} onChange={(e) => setModel(i, { voices_text: e.target.value })} placeholder="af_heart, am_michael" title="Returned by GET /v1/audio/voices. Leave empty to use the list the upstream server provides (for example Kokoro-FastAPI)." />
+                  <div className="mt-1 text-xs text-[#787884]">Leave empty to use the upstream's own <span className="mono">/audio/voices</span> list.</div></div>
+              )}
               <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-[#8e8e9a]">Combined capabilities: {[...caps].map((c) => <CapChip key={c} cap={c} />)}{caps.size === 0 && "—"}</div>
 
               <table className="mt-4 w-full text-sm">

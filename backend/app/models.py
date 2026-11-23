@@ -53,6 +53,7 @@ class GatewayModel(SQLModel, table=True):
     public_name: str
     enabled: bool = True  # False: kept in the gateway but not served (requests get 404, hidden from /models)
     aliases: Optional[list] = Field(default=None, sa_column=Column(JSON))  # extra names this model is also exposed under
+    voices: Optional[list] = Field(default=None, sa_column=Column(JSON))  # admin-set voice list for TTS models (answers GET /audio/voices when the upstream has none)
     strategy: Optional[str] = None  # overrides gateway strategy
     sticky: bool = False
     system_prompt: Optional[str] = None

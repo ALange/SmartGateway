@@ -83,6 +83,10 @@ set a system prompt, default parameters, a max-tokens ceiling, caching and compr
 **Extra names (aliases):** a public model can have optional additional names. Clients may request any of them; the request is logged,
 cached and answered under the name used, and `/models` lists each one. Keys' allowed-model lists accept the canonical name or an alias.
 
+**Text to speech:** `GET /v1/audio/voices` (also under `/gw/<slug>/v1` and `/unified/v1?model=`) lists the voices of a gateway's TTS models,
+or of one model with `?model=`. The gateway forwards the upstream's own `/audio/voices` answer (for example Kokoro-FastAPI's
+`{"voices": [...]}`), merging several TTS models. For servers that have no such endpoint, set **Voices** on the model in the gateway editor.
+
 ### Council gateways
 A **council** gateway turns several models into one better answer, behind an ordinary `chat/completions` URL (Gateways → **Council** tab).
 It works in three stages:

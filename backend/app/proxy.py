@@ -225,6 +225,94 @@ def public_models(gw: Gateway, key=None) -> list[dict]:
     return out
 
 
+# ---------------------------------------------------------------- GET /audio/voices
+_VOICES_TTL, _VOICES_NEG_TTL = 60, 10
+_voices_cache: dict = {}  # upstream base_url -> (expires, voices)
+
+
+def _voice_id(v) -> str:
+    if isinstance(v, str):
+        return v
+    if isinstance(v, dict):
+        return str(v.get("id") or v.get("voice_id") or v.get("name") or "")
+    return ""
+
+
+def _parse_voices(data) -> list:
+    """Kokoro-FastAPI answers {"voices": [...]}; some servers answer a bare list. Items are strings or objects."""
+    items = data.get("voices") if isinstance(data, dict) else data
+    return [v for v in items if _voice_id(v)][:500] if isinstance(items, list) else []
+
+
+async def _upstream_voices(c: Candidate) -> list:
+    hit = _voices_cache.get(c.base_url)
+    if hit and hit[0] > time.time():
+        return hit[1]
+    headers = {"Authorization": f"Bearer {c.api_key}"} if c.api_key else {}
+    if c.provider:
+        headers.update(provider_headers(c.provider, {}, {}))
+    voices: list = []
+    try:
+        r = await client.get(f"{c.base_url}/audio/voices", headers=headers, timeout=httpx.Timeout(10.0, connect=5.0))
+        if r.status_code == 200:
+            voices = _parse_voices(r.json())
+        else:
+            log.info("upstream %s has no /audio/voices (HTTP %s)", c.endpoint_name, r.status_code)
+    except Exception as e:  # unreachable upstream, not JSON, ...
+        log.info("voices request to %s failed: %s", c.endpoint_name, e)
+    _voices_cache[c.base_url] = (time.time() + (_VOICES_TTL if voices else _VOICES_NEG_TTL), voices)
+    return voices
+
+
+async def audio_voices(gw: Gateway, key, wanted: str = ""):
+    """GET /audio/voices: the voices of one TTS model (?model=) or of every TTS model of the gateway. A voice list set on the model wins;
+    otherwise the upstream's own /audio/voices answer is used."""
+    with session() as s:
+        gms = [g for g in s.exec(select(GatewayModel).where(GatewayModel.gateway_id == gw.id, GatewayModel.enabled == True)).all()]  # noqa: E712
+        for g in gms:
+            s.expunge(g)
+    allowed = key.allowed_models if key is not None and key.allowed_models else None
+    if wanted:
+        gm, shown = match_model(gms, wanted)
+        if gm is None:
+            return err(404, f"Model '{wanted}' not found on this gateway. Available: "
+                            + ", ".join(n for g in gms for n in model_names(g)), "model_not_found")
+        if allowed and gm.public_name not in allowed and shown not in allowed:
+            return err(403, f"This API key is not allowed to use model '{shown}'", "permission_denied")
+        picked = [gm]
+    else:
+        picked = [g for g in gms if not allowed or g.public_name in allowed or any(n in allowed for n in model_names(g))]
+    work = []  # (GatewayModel, tts members)
+    for g in picked:
+        tts = [c for c in load_members(g.id) if "tts" in c.caps]
+        if tts:
+            work.append((g, tts))
+    if wanted and not work:
+        return err(400, f"Model '{wanted}' has no text-to-speech member", "capability_unavailable")
+
+    async def voices_of(g, tts) -> list:
+        if g.voices:
+            return list(g.voices)
+        online = [c for c in tts if health.status.get(c.endpoint_id) != "offline"]
+        found: list = []
+        for part in await asyncio.gather(*(_upstream_voices(c) for c in online)):
+            found += part
+        return found
+
+    merged: list = []
+    seen: set = set()
+    for part in await asyncio.gather(*(voices_of(g, t) for g, t in work)):
+        for v in part:
+            vid = _voice_id(v)
+            if vid and vid not in seen:
+                seen.add(vid)
+                merged.append(v)
+    if not merged:
+        return err(404, "No voices are available. Set a voice list on the TTS model in the gateway editor, or use an upstream "
+                        "that serves /audio/voices.", "voices_unavailable")
+    return {"voices": merged}
+
+
 async def log_request(rec: RequestLog, comp_events: Optional[list] = None) -> None:
     if no_request_log.get():  # synthetic stress-test traffic is not logged
         return
@@ -932,6 +1020,8 @@ async def _handle(gw: Gateway, key, route: str, request: Request, strict: bool =
         return {"object": "list", "data": public_models(gw, key)}
     if strict and request.method == "GET" and route.startswith("models/"):
         return anthropic_model(public_models(gw, key), route[7:])
+    if route == "audio/voices" and request.method == "GET":
+        return await audio_voices(gw, key, request.query_params.get("model", "").strip())
     if request.method != "POST":
         return err(404, f"Unsupported route: {request.method} /v1/{route}", "not_found")
     body, files, e = await parse_body(request)
@@ -1104,6 +1194,23 @@ def _unified_models(aliases: list[dict], request: Request, mode: Optional[str] =
     return out
 
 
+def _unified_target(wanted: str, aliases, mode: str, request: Request, allow_default: bool = False):
+    """(gateway, key, entry, error) for a model name sent to the unified endpoint."""
+    entry = unified.resolve(wanted, aliases)
+    if entry is None and not wanted and allow_default:
+        mine = _unified_models(aliases, request, mode)
+        entry = unified.resolve(mine[0]["id"], aliases) if len(mine) == 1 else None
+    if entry is None:
+        avail = ", ".join(m["id"] for m in _unified_models(aliases, request, mode)) or "none"
+        return None, None, None, err(404, f"Model '{wanted}' not found. Available: {avail}", "model_not_found")
+    if mode == "all":
+        return entry["gateway"], None, entry, None   # the unified key replaces the gateway's own key (and its limits)
+    gw, key, e = authenticate(entry["gateway"].slug, request, allow_internal=True)
+    if not e and key is None and unified.keys():
+        e = err(401, "Invalid API key", "invalid_api_key")
+    return gw, key, entry, e
+
+
 @router.api_route("/unified/v1/{path:path}", methods=["GET", "POST"])
 async def unified_route(path: str, request: Request):
     if not settings_store.get_cached().get("unified_enabled"):
@@ -1117,6 +1224,14 @@ async def unified_route(path: str, request: Request):
         if is_anthropic(request, route):
             return await _strict(anthropic_models(_unified_models(aliases, request, mode), request), request)
         return {"object": "list", "data": _unified_models(aliases, request, mode)}
+    if route == "audio/voices" and request.method == "GET":
+        wanted = request.query_params.get("model", "").strip()
+        if not wanted:
+            return await _compat_error(err(400, "Add ?model=<gateway name or alias> to choose whose voices to list", "invalid_request"), route, request)
+        gw, key, entry, e = _unified_target(wanted, aliases, mode, request)
+        if e:
+            return await _compat_error(e, route, request)
+        return await audio_voices(gw, key, entry["model"])
     if request.method != "POST":
         return err(404, f"Unsupported route: {request.method} /unified/v1/{route}", "not_found")
     body, files, e = await parse_body(request)
@@ -1125,20 +1240,8 @@ async def unified_route(path: str, request: Request):
     if route == "messages/count_tokens":
         return await handle_parsed(None, None, route, body, files, request)
     wanted = str(body.get("model") or "").strip()
-    entry = unified.resolve(wanted, aliases)
-    if entry is None and not wanted:
-        mine = _unified_models(aliases, request, mode)
-        entry = unified.resolve(mine[0]["id"], aliases) if len(mine) == 1 else None
-    if entry is None:
-        avail = ", ".join(m["id"] for m in _unified_models(aliases, request, mode)) or "none"
-        return await _compat_error(err(404, f"Model '{wanted}' not found. Available: {avail}", "model_not_found"), route, request)
-    if mode == "all":
-        gw, key = entry["gateway"], None   # the unified key replaces the gateway's own key (and its limits)
-    else:
-        gw, key, e = authenticate(entry["gateway"].slug, request, allow_internal=True)
-        if not e and key is None and unified.keys():
-            e = err(401, "Invalid API key", "invalid_api_key")
-        if e:
-            return await _compat_error(e, route, request)
+    gw, key, entry, e = _unified_target(wanted, aliases, mode, request, allow_default=True)
+    if e:
+        return await _compat_error(e, route, request)
     body = {**body, "model": entry["model"]}
     return await handle_parsed(gw, key, route, body, files, request, alias=entry["alias"])
