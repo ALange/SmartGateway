@@ -86,7 +86,7 @@ cached and answered under the name used, and `/models` lists each one. Keys' all
 **Text to speech:** `GET /v1/audio/voices` (on `/gw/<slug>/v1` and on `/unified/v1`) lists the voices of the TTS models a caller may use,
 or of one model with `?model=` (on the unified endpoint that is a gateway name or alias; without it every exposed TTS model is merged). The gateway forwards the upstream's own `/audio/voices` answer (for example Kokoro-FastAPI's
 `{"voices": [...]}`), merging several TTS models. Voices are discovered when an endpoint is added or rescanned and shown as a checklist in the gateway editor, so you can offer a subset
-without typing names (**Refresh from upstream** re-reads them). Nothing selected means every voice the upstream reports. For servers that
+without typing names (**Refresh from upstream** re-reads them); models exposed directly on the unified endpoint (Gateways -> Unified) get the same checklist. Nothing selected means every voice the upstream reports. For servers that
 have no such endpoint, type the names in the same field.
 
 ### Council gateways

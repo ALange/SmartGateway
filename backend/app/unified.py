@@ -14,6 +14,7 @@ from . import settings_store as st
 from .crypto import hash_key
 from .db import session
 from .models import ApiKey, Endpoint, Gateway, GatewayModel, Member, Model
+from .voices import clean_voices, voice_id
 
 HIDDEN_SLUGS = ("__unified__", "__council__")   # internal gateways that are never listed or addressable on their own
 INTERNAL_SLUG = "__unified__"   # hidden gateway that holds the upstream models exposed directly on the unified endpoint
@@ -82,6 +83,7 @@ def sync_models(entries: list[dict]) -> None:
         have = {gm.public_name: gm for gm in s.exec(select(GatewayModel).where(GatewayModel.gateway_id == gw.id)).all()}
         wanted = {e["name"]: e["model_id"] for e in entries}
         off = {e["name"] for e in entries if e.get("disabled")}
+        voices_of = {e["name"]: e.get("voices") for e in entries}
         for name, gm in have.items():
             if name not in wanted:
                 for mem in s.exec(select(Member).where(Member.gateway_model_id == gm.id)).all():
@@ -95,6 +97,10 @@ def sync_models(entries: list[dict]) -> None:
                 s.flush()
             if gm.enabled == (name in off):   # keep the internal model in step with the "disabled" switch
                 gm.enabled = name not in off
+                s.add(gm)
+            voices = clean_voices(voices_of.get(name)) or None   # TTS: the voices offered by GET /audio/voices (None = whatever the upstream reports)
+            if (gm.voices or None) != voices:
+                gm.voices = voices
                 s.add(gm)
             mems = s.exec(select(Member).where(Member.gateway_model_id == gm.id)).all()
             if len(mems) == 1 and mems[0].model_id == model_id:

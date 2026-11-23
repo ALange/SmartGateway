@@ -1,3 +1,4 @@
+import VoicePicker, { splitVoices } from "./VoicePicker";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Box, Check, Copy, KeyRound, Layers, Loader2, Lock, Plus, Save, Trash2, X } from "lucide-react";
@@ -16,14 +17,16 @@ export default function UnifiedEndpoint({ onChange }: { onChange?: (v: any) => v
   const [copied, setCopied] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
-  const [dModels, setDModels] = useState<{ model_id: number; name: string; upstream_id: string; endpoint: string; aliases?: string[]; aliases_text?: string; disabled?: boolean }[]>([]);  // upstream models exposed directly
+  const [dModels, setDModels] = useState<{ model_id: number; name: string; upstream_id: string; endpoint: string; aliases?: string[]; aliases_text?: string; disabled?: boolean; capabilities?: string[]; voices?: string[]; voices_text?: string; voice_options?: string[] }[]>([]);  // upstream models exposed directly
   const [allModels, setAllModels] = useState<any[]>([]);   // every model of every endpoint, for the picker
   const [pick, setPick] = useState("");
+  const [vBusy, setVBusy] = useState<Record<number, boolean>>({});
+  const [vErr, setVErr] = useState<Record<number, string>>({});
   const [keys, setKeys] = useState<any[]>([]);
   const [keyName, setKeyName] = useState("");
   const [fresh, setFresh] = useState<any>(null);  // a just-created key: its plaintext is shown once
   const [keyErr, setKeyErr] = useState("");
-  const apply = (v: any) => { onChange?.(v); setEnabled(v.enabled); setRows(v.gateways.map((g: any) => ({ ...g, aliases_text: (g.aliases || []).join(", ") }))); setDModels((v.models || []).map((m: any) => ({ ...m, aliases_text: (m.aliases || []).join(", ") }))); setKeys(v.keys || []); setDirty(false); };
+  const apply = (v: any) => { onChange?.(v); setEnabled(v.enabled); setRows(v.gateways.map((g: any) => ({ ...g, aliases_text: (g.aliases || []).join(", ") }))); setDModels((v.models || []).map((m: any) => ({ ...m, aliases_text: (m.aliases || []).join(", "), voices_text: (m.voices || []).join(", ") }))); setKeys(v.keys || []); setDirty(false); };
   useEffect(() => {
     api("/api/unified").then(apply).catch(() => {});
     api("/api/endpoints").then((eps: any[]) => setAllModels(eps.flatMap((e) => (e.models || []).filter((m: any) => m.enabled !== false).map((m: any) => ({ model_id: m.id, upstream_id: m.upstream_id, endpoint: e.name }))))).catch(() => {});
@@ -37,10 +40,18 @@ export default function UnifiedEndpoint({ onChange }: { onChange?: (v: any) => v
   const save = async () => {
     setBusy(true); setMsg(null);
     try {
-      const v = await api("/api/unified", { method: "PUT", json: { enabled, gateways: exposed.map((r) => ({ id: r.id, model: r.model, aliases: split(r.aliases_text) })), models: dModels.map((m) => ({ model_id: m.model_id, name: m.name, aliases: split(m.aliases_text) , disabled: !!m.disabled})) } });
+      const v = await api("/api/unified", { method: "PUT", json: { enabled, gateways: exposed.map((r) => ({ id: r.id, model: r.model, aliases: split(r.aliases_text) })), models: dModels.map((m) => ({ model_id: m.model_id, name: m.name, aliases: split(m.aliases_text) , disabled: !!m.disabled, voices: splitVoices(m.voices_text || "")})) } });
       apply(v); setMsg({ ok: true, text: "Saved. Changes apply within a few seconds." });
     } catch (e: any) { setMsg({ ok: false, text: e.message }); }
     setBusy(false);
+  };
+  const refreshVoices = async (modelId: number) => {
+    setVBusy((b) => ({ ...b, [modelId]: true })); setVErr((e) => ({ ...e, [modelId]: "" }));
+    try {
+      const m = await api(`/api/models/${modelId}/voices/refresh`, { method: "POST" });
+      setDModels((list) => list.map((x) => (x.model_id === modelId ? { ...x, voice_options: (m.voices || []).map((v: any) => (typeof v === "string" ? v : String(v?.id ?? v?.voice_id ?? v?.name ?? ""))).filter(Boolean) } : x)));
+    } catch (e: any) { setVErr((x) => ({ ...x, [modelId]: e.message })); }
+    setVBusy((b) => ({ ...b, [modelId]: false }));
   };
   const addKey = async () => {
     setKeyErr("");
@@ -121,7 +132,7 @@ export default function UnifiedEndpoint({ onChange }: { onChange?: (v: any) => v
           ))}
         </div>
       )}
-      <p className="mt-2 text-xs text-[#787884]">A gateway with several public models is reachable as <span className="mono">name</span> (its default model) and as <span className="mono">name/model</span>. If two gateways share a name, the slug is appended to the second.</p>
+      <p className="mt-2 text-xs text-[#787884]">A gateway with several public models is reachable as <span className="mono">name</span> (its default model) and as <span className="mono">name/model</span>. If two gateways share a name, the slug is appended to the second. Voices offered by a text-to-speech model of a gateway are chosen in that gateway's editor.</p>
 
       <label className="lbl mt-6 flex items-center gap-1.5"><Box size={12} /> Models</label>
       <p className="mb-3 max-w-3xl text-xs text-[#787884]">Expose a single model of one of your endpoints directly, without a gateway around it. Clients use the name you give it in the <span className="mono">model</span> field.</p>
@@ -135,6 +146,10 @@ export default function UnifiedEndpoint({ onChange }: { onChange?: (v: any) => v
               <span className="text-xs text-[#787884]"><span className="mono">{m.upstream_id}</span> @ {m.endpoint}</span>
               <label className="btn cursor-pointer !px-2 !py-1" title="Turn the model off without removing it: requests for it get 404 and it is hidden from /models"><input type="checkbox" checked={!m.disabled} onChange={(e) => { setDModels(dModels.map((x) => (x.model_id === m.model_id ? { ...x, disabled: !e.target.checked } : x))); setDirty(true); }} /> Enabled</label>
               <button className="btn danger !px-2 !py-1" title="Remove" onClick={() => { setDModels(dModels.filter((x) => x.model_id !== m.model_id)); setDirty(true); }}><X size={14} /></button>
+              {m.capabilities?.includes("tts") && (
+                <div className="basis-full pb-1"><VoicePicker options={m.voice_options || []} text={m.voices_text || ""} busy={!!vBusy[m.model_id]} err={vErr[m.model_id] || ""}
+                  onChange={(t) => { setDModels(dModels.map((x) => (x.model_id === m.model_id ? { ...x, voices_text: t } : x))); setDirty(true); }} onRefresh={() => refreshVoices(m.model_id)} /></div>
+              )}
             </div>))}
         </div>
       )}

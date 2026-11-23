@@ -228,11 +228,12 @@ def public_models(gw: Gateway, key=None) -> list[dict]:
 
 # ---------------------------------------------------------------- GET /audio/voices
 _VOICES_TTL, _VOICES_NEG_TTL = 60, 10
-_voices_cache: dict = {}  # upstream base_url -> (expires, voices)
+_voices_cache: dict = {}  # (upstream base_url, upstream model id) -> (expires, voices)
 
 
 async def _upstream_voices(c: Candidate) -> list:
-    hit = _voices_cache.get(c.base_url)
+    ckey = (c.base_url, c.upstream_id)
+    hit = _voices_cache.get(ckey)
     if hit and hit[0] > time.time():
         return hit[1]
     headers = {"Authorization": f"Bearer {c.api_key}"} if c.api_key else {}
@@ -240,14 +241,14 @@ async def _upstream_voices(c: Candidate) -> list:
         headers.update(provider_headers(c.provider, {}, {}))
     voices: list = []
     try:
-        r = await client.get(f"{c.base_url}/audio/voices", headers=headers, timeout=httpx.Timeout(10.0, connect=5.0))
+        r = await client.get(f"{c.base_url}/audio/voices", params={"model": c.upstream_id}, headers=headers, timeout=httpx.Timeout(10.0, connect=5.0))
         if r.status_code == 200:
             voices = _parse_voices(r.json())
         else:
             log.info("upstream %s has no /audio/voices (HTTP %s)", c.endpoint_name, r.status_code)
     except Exception as e:  # unreachable upstream, not JSON, ...
         log.info("voices request to %s failed: %s", c.endpoint_name, e)
-    _voices_cache[c.base_url] = (time.time() + (_VOICES_TTL if voices else _VOICES_NEG_TTL), voices)
+    _voices_cache[ckey] = (time.time() + (_VOICES_TTL if voices else _VOICES_NEG_TTL), voices)
     return voices
 
 

@@ -9,6 +9,7 @@ from .. import settings_store as st
 from .. import unified
 from ..db import session
 from ..models import Endpoint, Gateway, GatewayModel, Model
+from ..voices import clean_voices, voice_id
 
 router = APIRouter(prefix="/api")
 
@@ -28,6 +29,7 @@ class ModelSel(BaseModel):
     name: Optional[str] = None   # public name on the unified endpoint (None = the upstream model id)
     aliases: list[str] = []      # extra names for the same model
     disabled: bool = False       # kept in the list but not served
+    voices: list[str] = []       # TTS: voices to offer via GET /audio/voices (empty = every voice the upstream reports)
 
 
 class UnifiedIn(BaseModel):
@@ -55,7 +57,8 @@ def _direct_models(cfg: dict, aliases: list[dict]) -> list[dict]:
             m = s.get(Model, e["model_id"])
             if m:
                 out.append({"model_id": m.id, "name": e["name"], "aliases": e.get("aliases") or [], "disabled": bool(e.get("disabled")), "alias": names.get(e["name"]), "upstream_id": m.upstream_id, "endpoint": eps.get(m.endpoint_id, "?"),
-                            "capabilities": m.capabilities or [], "enabled": bool(m.enabled)})
+                            "capabilities": m.capabilities or [], "enabled": bool(m.enabled),
+                            "voices": e.get("voices") or [], "voice_options": [v for v in (voice_id(x) for x in (m.voices or [])) if v]})
     return out
 
 
@@ -165,7 +168,8 @@ def put_unified(body: UnifiedIn):
                 if name.lower() in names:
                     raise HTTPException(400, f"The name '{name}' is used twice")
                 names.add(name.lower())
-                entries.append({"model_id": m.id, "name": name, "aliases": _clean(sel.aliases), "disabled": bool(sel.disabled)})
+                entries.append({"model_id": m.id, "name": name, "aliases": _clean(sel.aliases), "disabled": bool(sel.disabled),
+                                "voices": clean_voices(sel.voices) if "tts" in (m.capabilities or []) else []})
         vals["unified_models"] = entries
     if vals:
         _check_unique(vals)

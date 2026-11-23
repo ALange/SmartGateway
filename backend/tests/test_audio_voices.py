@@ -22,6 +22,8 @@ class Up:
     def __init__(self):
         self.replies: dict = {}   # host -> (status, json) for /audio/voices
         self.calls: list = []     # (host, authorization)
+        self.queries: list = []   # ?model= values seen
+        self.need_model: set = set()  # hosts that answer 400 without ?model= (oMLX)
 
 
 @pytest.fixture
@@ -32,6 +34,9 @@ def up(monkeypatch):
     def handler(request: httpx.Request):
         if request.url.path.endswith("/audio/voices"):
             u.calls.append((request.url.host, request.headers.get("authorization")))
+            u.queries.append(request.url.params.get("model"))
+            if request.url.host in u.need_model and not request.url.params.get("model"):
+                return httpx.Response(400, json={"error": {"message": "'model' query parameter is required"}})
             status, data = u.replies.get(request.url.host, (404, {"detail": "Not Found"}))
             return httpx.Response(status, json=data)
         return httpx.Response(404, json={"detail": "nope"})
@@ -216,7 +221,7 @@ from app import discovery  # noqa: E402
 
 def fake_network(monkeypatch, models, voices):
     """voices: a list, or None for 'the upstream has no /audio/voices'. Returns a dict to change `voices` later and count calls."""
-    st = {"voices": voices, "calls": 0}
+    st = {"voices": voices, "calls": 0, "models": []}
 
     async def ping(base, key):
         return True, None
@@ -227,8 +232,9 @@ def fake_network(monkeypatch, models, voices):
     async def slot(base, key):
         return "none"
 
-    async def fv(base, key, provider=None):
+    async def fv(base, key, provider=None, model=None):
         st["calls"] += 1
+        st["models"].append(model)
         return st["voices"]
     monkeypatch.setattr(discovery, "ping", ping)
     monkeypatch.setattr(discovery, "fetch_models", fetch)
@@ -258,7 +264,7 @@ def test_endpoint_add_and_rescan_discover_voices(client, monkeypatch):
     by = {m["upstream_id"]: m for m in ep["models"]}
     assert by["kokoro"]["capabilities"] == ["tts"] and by["kokoro"]["voices"] == ["af_heart", "am_michael"]
     assert not by["chat-llm"].get("voices")                                  # only TTS models carry voices
-    assert st["calls"] == 1                                                   # one request per endpoint, not per model
+    assert st["calls"] == 1 and st["models"] == ["kokoro"]                   # asked for the TTS model only, with its id
 
     st["voices"] = ["af_heart", "af_bella", "am_michael"]                    # the upstream gained a voice
     ep = client.post(f"/api/endpoints/{ep['id']}/rescan?probe=false").json()
@@ -284,3 +290,55 @@ def test_refresh_voices_and_gateway_exposes_them_for_the_checklist(client, monke
     client.patch(f"/api/models/{by['kokoro']['id']}", json={"enabled": True})
     g = client.post("/api/gateways", json={"name": f"vg-{time.time_ns()}", "models": [{"public_name": "speech", "members": [{"model_id": by["kokoro"]["id"]}]}]}).json()
     assert g["models"][0]["members"][0]["voices"] == ["af_heart", "am_adam"]
+
+
+# ---- oMLX-style servers list voices per model and refuse /audio/voices without ?model=
+def test_live_route_sends_the_model_id_to_servers_that_require_it(client, up):
+    up.need_model.add("omlx")
+    up.replies["omlx"] = (200, {"model": "u", "voices": ["af_heart", "am_adam"]})
+    g, _ = make_gw(client, [("speech", "omlx", ["tts"], [])])
+    r = voices(client, g)
+    assert r.status_code == 200 and r.json() == {"voices": ["af_heart", "am_adam"]}
+    assert up.queries == ["u"]                                                 # the upstream model id, not the public name
+
+
+def test_discovery_sends_the_model_id(monkeypatch):
+    real = httpx.AsyncClient
+    seen = []
+
+    def handler(request: httpx.Request):
+        seen.append(request.url.params.get("model"))
+        if not request.url.params.get("model"):
+            return httpx.Response(400, json={"error": "'model' query parameter is required"})
+        return httpx.Response(200, json={"model": request.url.params["model"], "voices": ["a", "b"]})
+    monkeypatch.setattr(discovery.httpx, "AsyncClient", lambda **kw: real(transport=httpx.MockTransport(handler), **kw))
+    assert asyncio.run(discovery.fetch_voices("http://omlx/v1", "k")) is None                         # without a model oMLX refuses
+    assert asyncio.run(discovery.fetch_voices("http://omlx/v1", "k", None, "Kokoro-82M-bf16")) == ["a", "b"]
+    assert seen == [None, "Kokoro-82M-bf16"]
+
+
+# ---- unified endpoint: a directly exposed TTS model gets the same discovered-voices checklist
+def test_unified_direct_tts_model_voice_selection(client, up):
+    up.replies["kokoro"] = (200, {"voices": ["a", "b", "c"]})
+    with Session(db.engine) as s:
+        ep = Endpoint(name=f"ep-udirect-{time.time_ns()}", base_url="http://kokoro/v1", status="online"); s.add(ep); s.commit(); s.refresh(ep)
+        tts = Model(endpoint_id=ep.id, upstream_id="kokoro", capabilities=["tts"], max_slots=2, enabled=True, voices=["a", "b", {"id": "c", "name": "Charlie"}]); s.add(tts)
+        chat = Model(endpoint_id=ep.id, upstream_id="llm", capabilities=["chat"], max_slots=2, enabled=True); s.add(chat)
+        s.commit(); s.refresh(tts); s.refresh(chat)
+        ep_id, tts_id, chat_id = ep.id, tts.id, chat.id
+    health.status[ep_id] = "online"
+    put = lambda voices, **kw: client.put("/api/unified", json={"enabled": True, "gateways": [], "models": [  # noqa: E731
+        {"model_id": tts_id, "name": "kokoro-direct", "voices": voices, **kw}, {"model_id": chat_id, "name": "llm-direct", "voices": ["ignored"]}]}).json()
+    try:
+        v = put(["b", " b ", "", "zzz"])
+        row = next(m for m in v["models"] if m["name"] == "kokoro-direct")
+        assert row["voices"] == ["b", "zzz"] and row["voice_options"] == ["a", "b", "c"]            # selection kept; discovered ids offered as options
+        assert next(m for m in v["models"] if m["name"] == "llm-direct")["voices"] == []             # only TTS models carry voices
+        r = client.get("/unified/v1/audio/voices?model=kokoro-direct")
+        assert r.json() == {"voices": ["b", "zzz"]}                                                  # the admin's choice, not the upstream's list
+        assert client.get("/unified/v1/audio/voices").json() == {"voices": ["b", "zzz"]}
+        put([])                                                                                      # nothing selected: the upstream's own list again
+        proxy._voices_cache.clear()
+        assert client.get("/unified/v1/audio/voices?model=kokoro-direct").json() == {"voices": ["a", "b", "c"]}
+    finally:
+        client.put("/api/unified", json={"enabled": False, "gateways": [], "models": []})

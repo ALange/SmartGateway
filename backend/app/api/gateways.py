@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
+from ..voices import clean_voices
 from .. import config, guardrails
 from ..db import get_session
 from ..crypto import hash_key
@@ -58,16 +59,6 @@ class GatewayIn(BaseModel):
     models: list[GatewayModelIn] = []
     kind: str = "router"          # router | council
     council: Optional[dict] = None  # council config (see council.py); for a council, `models` holds just its public model's settings
-
-
-def clean_voices(voices) -> list[str]:
-    """Trimmed, de-duplicated voice names (at most 200 entries of 64 characters)."""
-    out: list[str] = []
-    for v in voices or []:
-        v = str(v).strip()[:64]
-        if v and v not in out:
-            out.append(v)
-    return out[:200]
 
 
 def slugify(s: str) -> str:
