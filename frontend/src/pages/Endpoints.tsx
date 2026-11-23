@@ -113,7 +113,7 @@ export default function Endpoints() {
                       const live = snapshot?.models?.[m.id];
                       return (
                         <tr key={m.id} className="border-t border-white/5">
-                          <td className="py-3 pr-4"><div className="mono">{m.upstream_id}</div>{m.context_length && <div className="text-xs text-[#787884]">ctx {m.context_length}</div>}</td>
+                          <td className="py-3 pr-4"><div className="mono">{m.upstream_id}</div>{m.context_length && <div className="text-xs text-[#787884]">ctx {m.context_length}</div>}{m.voices?.length > 0 && <div className="text-xs text-[#787884]">{m.voices.length} voices found</div>}</td>
                           <td className="py-3 pr-4"><div className="flex flex-wrap gap-1.5">
                             {ALL_CAPS.map((c) => {
                               const on = m.capabilities.includes(c);

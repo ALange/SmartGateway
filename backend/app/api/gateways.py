@@ -89,7 +89,7 @@ def gw_out(gw: Gateway, s: Session) -> dict:
                 continue
             caps |= set(m.capabilities or [])
             members.append({**mem.model_dump(), "upstream_id": m.upstream_id, "endpoint_id": m.endpoint_id,
-                            "endpoint_name": ep.name if ep else "?", "provider": ep.provider if ep else None, "capabilities": m.capabilities,
+                            "endpoint_name": ep.name if ep else "?", "provider": ep.provider if ep else None, "capabilities": m.capabilities, "voices": m.voices or [],
                             "max_slots": m.max_slots})
         d["models"].append({**gm.model_dump(), "members": members, "capabilities": sorted(caps)})
     return d

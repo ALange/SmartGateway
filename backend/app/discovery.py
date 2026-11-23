@@ -357,6 +357,21 @@ async def discover(base_url: str, api_key: Optional[str], probe: bool = True, pr
         return results
 
 
+async def fetch_voices(base_url: str, api_key: Optional[str], provider: Optional[str] = None) -> Optional[list]:
+    """The voices an upstream reports via GET /audio/voices (Kokoro-FastAPI and compatible servers); None when it has no such endpoint."""
+    from .voices import parse_voices
+    base = normalize_base_url(base_url)
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=5.0)) as client:
+            r = await client.get(f"{base}/audio/voices", headers={**headers_for(api_key), **provider_headers_for(provider)})
+        if r.status_code != 200:
+            return None
+        voices = parse_voices(r.json())
+        return voices or None
+    except Exception:  # noqa: BLE001  (unreachable, not JSON, ...)
+        return None
+
+
 async def ping(base_url: str, api_key: Optional[str]) -> tuple[bool, Optional[str]]:
     base = normalize_base_url(base_url)
     try:

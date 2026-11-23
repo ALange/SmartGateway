@@ -8,11 +8,47 @@ import GuardrailsEditor from "../components/GuardrailsEditor";
 
 const blankModel = () => ({ public_name: "", enabled: true, aliases_text: "", voices_text: "", strategy: "", sticky: false, system_prompt: "", max_tokens_cap: "", default_params: "", cache_enabled: false, cache_ttl: "", cache_any_temperature: false, cache_streaming: true, cache_replay_speed: "instant", compress_mode: "", guardrails: null as any, members: [] as any[] });
 
+const voiceName = (v: any): string => (typeof v === "string" ? v : String(v?.id ?? v?.voice_id ?? v?.name ?? ""));
+const splitVoices = (t: string) => String(t || "").split(/[,\n]/).map((x) => x.trim()).filter(Boolean);
+
+/** Checklist of the voices the upstream reported (discovered when the endpoint was added); the text field below stays editable for names it does not list. */
+function VoicePicker({ options, text, onChange, onRefresh, busy, err }: { options: string[]; text: string; onChange: (t: string) => void; onRefresh: () => void; busy: boolean; err: string }) {
+  const chosen = splitVoices(text);
+  const set = new Set(chosen);
+  const toggle = (v: string) => onChange((set.has(v) ? chosen.filter((x) => x !== v) : [...chosen, v]).join(", "));
+  return (
+    <div className="mt-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="lbl !mb-0">Voices to offer (optional)</label>
+        {options.length > 0 && <>
+          <button type="button" className="btn !py-1 text-xs" onClick={() => onChange([...new Set([...chosen, ...options])].join(", "))}>All</button>
+          <button type="button" className="btn !py-1 text-xs" onClick={() => onChange(chosen.filter((x) => !options.includes(x)).join(", "))}>None</button>
+        </>}
+        <button type="button" className="btn !py-1 text-xs" disabled={busy} onClick={onRefresh} title="Ask the upstream server for its current voice list (GET /audio/voices)">{busy ? "Asking…" : "Refresh from upstream"}</button>
+      </div>
+      {options.length > 0 ? (
+        <div className="mt-2 flex max-h-44 flex-wrap gap-1.5 overflow-y-auto">
+          {options.map((v) => (
+            <label key={v} className="btn cursor-pointer !py-1 text-xs mono" style={set.has(v) ? { borderColor: "#6c5ce7" } : undefined}>
+              <input type="checkbox" checked={set.has(v)} onChange={() => toggle(v)} /> {v}
+            </label>
+          ))}
+        </div>
+      ) : <div className="mt-2 text-xs text-[#787884]">The upstream did not list its voices. Type the names below, or use Refresh once the server supports <span className="mono">/audio/voices</span>.</div>}
+      <input className="input mono mt-2" value={text} onChange={(e) => onChange(e.target.value)} placeholder="af_heart, am_michael" title="Returned by GET /v1/audio/voices. Names the upstream does not list can be typed here." />
+      <div className="mt-1 text-xs text-[#787884]">{chosen.length ? `${chosen.length} voice${chosen.length === 1 ? "" : "s"} offered.` : "Nothing selected: every voice the upstream reports is offered (always up to date)."}</div>
+      {err && <div className="mt-1 text-xs text-[#ff9b9b]">{err}</div>}
+    </div>
+  );
+}
+
 export default function GatewayEditor() {
   const { id } = useParams();
   const nav = useNavigate();
   const [eps, setEps] = useState<any[]>([]);
   const [err, setErr] = useState("");
+  const [vBusy, setVBusy] = useState<Record<number, boolean>>({});
+  const [vErr, setVErr] = useState<Record<number, string>>({});
   const [cacheBackend, setCacheBackend] = useState("memory");
   const [f, setF] = useState<any>({ name: "", slug: "", strategy: "least_busy", queue_timeout: 60, max_retries: 2, models: [blankModel()] });
 
@@ -28,6 +64,14 @@ export default function GatewayEditor() {
   const byId = (mid: number) => allModels.find((m) => m.id === mid);
   const setModel = (i: number, patch: any) => setF({ ...f, models: f.models.map((m: any, j: number) => (j === i ? { ...m, ...patch } : m)) });
   const setMember = (i: number, k: number, patch: any) => setModel(i, { members: f.models[i].members.map((x: any, j: number) => (j === k ? { ...x, ...patch } : x)) });
+
+  const refreshVoices = async (i: number, ttsIds: number[]) => {
+    setVBusy((b) => ({ ...b, [i]: true })); setVErr((e) => ({ ...e, [i]: "" }));
+    let last = "";
+    for (const mid of ttsIds) { try { await api(`/api/models/${mid}/voices/refresh`, { method: "POST" }); last = ""; } catch (e: any) { last = e.message; } }
+    await api("/api/endpoints").then(setEps);
+    setVErr((e) => ({ ...e, [i]: last })); setVBusy((b) => ({ ...b, [i]: false }));
+  };
 
   const save = async () => {
     setErr("");
@@ -83,11 +127,12 @@ export default function GatewayEditor() {
                 <label className="btn cursor-pointer" title="Turn the model off without deleting it: requests for it get 404 and it is hidden from /v1/models. Its settings and upstreams are kept."><input type="checkbox" checked={m.enabled !== false} onChange={(e) => setModel(i, { enabled: e.target.checked })} /> Enabled</label>
                 <button className="btn danger" onClick={() => setF({ ...f, models: f.models.filter((_: any, j: number) => j !== i) })}><Trash2 size={15} /></button>
               </div>
-              {caps.has("tts") && (
-                <div className="mt-3"><label className="lbl">Voices (optional, comma separated)</label>
-                  <input className="input mono" value={m.voices_text || ""} onChange={(e) => setModel(i, { voices_text: e.target.value })} placeholder="af_heart, am_michael" title="Returned by GET /v1/audio/voices. Leave empty to use the list the upstream server provides (for example Kokoro-FastAPI)." />
-                  <div className="mt-1 text-xs text-[#787884]">Leave empty to use the upstream's own <span className="mono">/audio/voices</span> list.</div></div>
-              )}
+              {caps.has("tts") && (() => {
+                const ttsIds: number[] = m.members.map((x: any) => x.model_id).filter((mid: number) => byId(mid)?.capabilities.includes("tts"));
+                const options = [...new Set<string>(ttsIds.flatMap((mid: number) => (byId(mid)?.voices || []).map(voiceName)).filter(Boolean))];
+                return <VoicePicker options={options} text={m.voices_text || ""} onChange={(t) => setModel(i, { voices_text: t })}
+                  onRefresh={() => refreshVoices(i, ttsIds)} busy={!!vBusy[i]} err={vErr[i] || ""} />;
+              })()}
               <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-[#8e8e9a]">Combined capabilities: {[...caps].map((c) => <CapChip key={c} cap={c} />)}{caps.size === 0 && "—"}</div>
 
               <table className="mt-4 w-full text-sm">

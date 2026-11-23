@@ -74,6 +74,14 @@ async def sync_models(ep: Endpoint, s: Session, probe: bool, free_out: Optional[
         if dm.context_length is not None:
             m.context_length = dm.context_length
         s.add(m)
+    # text-to-speech models: remember the voices the upstream offers (one request per endpoint); a failed lookup keeps the old list
+    tts = [m for m in s.exec(select(Model).where(Model.endpoint_id == ep.id)).all() if "tts" in (m.capabilities or []) and m.upstream_id not in existing]
+    if tts:
+        voices = await discovery.fetch_voices(ep.base_url, ep.api_key, ep.provider)
+        if voices is not None:
+            for m in tts:
+                m.voices = voices
+                s.add(m)
     # drop models the upstream no longer lists; an empty result is treated as "unknown", not "all gone"
     if found:
         for m in existing.values():
@@ -168,6 +176,25 @@ def delete_endpoint(ep_id: int, s: Session = Depends(get_session)):
     s.commit()
     health.status.pop(ep_id, None)
     return {"ok": True}
+
+
+@router.post("/models/{model_id}/voices/refresh")
+async def refresh_voices(model_id: int, s: Session = Depends(get_session)):
+    """Ask the upstream for its voice list again (the gateway editor offers them as a checklist)."""
+    m = s.get(Model, model_id)
+    ep = s.get(Endpoint, m.endpoint_id) if m else None
+    if not m or not ep:
+        raise HTTPException(404)
+    if "tts" not in (m.capabilities or []):
+        raise HTTPException(400, "Only text-to-speech models have voices")
+    voices = await discovery.fetch_voices(ep.base_url, ep.api_key, ep.provider)
+    if voices is None:
+        raise HTTPException(400, "The upstream did not return a voice list (GET /audio/voices). Type the voice names in the gateway editor instead.")
+    m.voices = voices
+    s.add(m)
+    s.commit()
+    s.refresh(m)
+    return m.model_dump()
 
 
 @router.patch("/models/{model_id}")

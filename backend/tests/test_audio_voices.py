@@ -138,21 +138,64 @@ def test_gateway_keys_and_allowed_models(client, up, monkeypatch):
     assert r.status_code == 401 and r.json().get("type") == "error"
 
 
-def test_unified_voices_need_a_model(client, up):
+def test_unified_voices_with_and_without_model(client, up):
     up.replies["kokoro"] = (200, {"voices": ["af_heart"]})
     up.replies["piper"] = (200, {"voices": ["lessac"]})
     g, _ = make_gw(client, [("speech", "kokoro", ["tts"], []), ("other", "piper", ["tts"], [])])
     client.put("/api/unified", json={"enabled": True, "gateways": [{"id": g["id"]}]})
     try:
-        r = client.get("/unified/v1/audio/voices")
-        assert r.status_code == 400
         assert client.get("/unified/v1/audio/voices?model=nope").status_code == 404
         r = client.get(f"/unified/v1/audio/voices?model={g['name']}")            # the gateway name = its default (first) model
         assert r.status_code == 200 and r.json() == {"voices": ["af_heart"]}
         r = client.get(f"/unified/v1/audio/voices?model={g['name']}/other")
         assert r.status_code == 200 and r.json() == {"voices": ["lessac"]}
+        r = client.get("/unified/v1/audio/voices")                               # no model (Open WebUI): everything exposed, merged
+        assert r.status_code == 200 and r.json() == {"voices": ["af_heart", "lessac"]}
     finally:
         client.put("/api/unified", json={"enabled": False, "gateways": []})
+
+
+def test_unified_voices_without_model_follow_access_rules(client, up):
+    up.replies["kokoro"] = (200, {"voices": ["open-voice"]})
+    up.replies["piper"] = (200, {"voices": ["locked-voice"]})
+    open_gw, _ = make_gw(client, [("speech", "kokoro", ["tts"], [])])
+    locked, tok = make_gw(client, [("speech", "piper", ["tts"], [])], keys={"k": []})
+    client.put("/api/unified", json={"enabled": True, "gateways": [{"id": open_gw["id"]}, {"id": locked["id"]}]})
+    try:
+        assert client.get("/unified/v1/audio/voices").json() == {"voices": ["open-voice"]}            # anonymous: open gateways only
+        r = client.get("/unified/v1/audio/voices", headers={"Authorization": f"Bearer {tok['k']}"})
+        assert r.json() == {"voices": ["open-voice", "locked-voice"]}                                  # a gateway key adds its own gateway
+        assert client.get(f"/unified/v1/audio/voices?model={locked['name']}").status_code == 401       # named, but not allowed
+        ukey = client.post("/api/unified/keys", json={"name": "u"})
+        assert ukey.status_code == 200, ukey.text
+        try:                                                                                           # a unified key opens everything
+            h = {"Authorization": f"Bearer {ukey.json()['key']}"}
+            assert client.get("/unified/v1/audio/voices", headers=h).json() == {"voices": ["open-voice", "locked-voice"]}
+            assert client.get("/unified/v1/audio/voices").status_code == 401                          # keys configured: anonymous is closed
+            assert client.get(f"/unified/v1/audio/voices?model={locked['name']}", headers=h).json() == {"voices": ["locked-voice"]}
+        finally:
+            client.delete(f"/api/unified/keys/{ukey.json()['id']}")
+    finally:
+        client.put("/api/unified", json={"enabled": False, "gateways": []})
+
+
+def test_unified_directly_exposed_tts_model(client, up):
+    up.replies["kokoro"] = (200, {"voices": ["af_heart", "am_michael"]})
+    with Session(db.engine) as s:
+        ep = Endpoint(name=f"ep-direct-{time.time_ns()}", base_url="http://kokoro/v1", api_key="sk-up", status="online"); s.add(ep); s.commit(); s.refresh(ep)
+        m = Model(endpoint_id=ep.id, upstream_id="kokoro", capabilities=["tts"], max_slots=2, context_length=0, enabled=True); s.add(m); s.commit(); s.refresh(m)
+        ep_id, m_id = ep.id, m.id
+    health.status[ep_id] = "online"
+    client.put("/api/unified", json={"enabled": True, "gateways": [], "models": [{"model_id": m_id, "name": "kokoro-direct", "aliases": ["tts-1"]}]})
+    try:
+        for q in ("", "?model=kokoro-direct", "?model=tts-1"):
+            r = client.get("/unified/v1/audio/voices" + q)
+            assert r.status_code == 200 and r.json() == {"voices": ["af_heart", "am_michael"]}, q
+        client.put("/api/unified", json={"enabled": True, "gateways": [], "models": [{"model_id": m_id, "name": "kokoro-direct", "disabled": True}]})
+        assert client.get("/unified/v1/audio/voices").status_code == 404                                # a disabled direct model is not listed
+        assert client.get("/unified/v1/audio/voices?model=kokoro-direct").status_code == 404
+    finally:
+        client.put("/api/unified", json={"enabled": False, "gateways": [], "models": []})
 
 
 def test_upstream_failure_does_not_leak_details(client, up):
@@ -163,3 +206,81 @@ def test_upstream_failure_does_not_leak_details(client, up):
     # a failed lookup is remembered briefly instead of hammering the upstream
     voices(client, g)
     assert len(up.calls) == 1
+
+
+# ---- discovery: voices are fetched when an endpoint is added or rescanned and offered as a checklist
+import asyncio  # noqa: E402
+
+from app import discovery  # noqa: E402
+
+
+def fake_network(monkeypatch, models, voices):
+    """voices: a list, or None for 'the upstream has no /audio/voices'. Returns a dict to change `voices` later and count calls."""
+    st = {"voices": voices, "calls": 0}
+
+    async def ping(base, key):
+        return True, None
+
+    async def fetch(client, base, key):
+        return [{"id": m} for m in models]
+
+    async def slot(base, key):
+        return "none"
+
+    async def fv(base, key, provider=None):
+        st["calls"] += 1
+        return st["voices"]
+    monkeypatch.setattr(discovery, "ping", ping)
+    monkeypatch.setattr(discovery, "fetch_models", fetch)
+    monkeypatch.setattr(discovery, "detect_slot_source", slot)
+    monkeypatch.setattr(discovery, "fetch_voices", fv)
+    return st
+
+
+def test_fetch_voices_parsing(monkeypatch):
+    real = httpx.AsyncClient
+    seen = {}
+
+    def handler(request: httpx.Request):
+        seen["auth"] = request.headers.get("authorization")
+        return {"/ok/v1/audio/voices": httpx.Response(200, json={"voices": ["a", {"id": "b"}]}),
+                "/bad/v1/audio/voices": httpx.Response(404, json={"detail": "nope"}),
+                "/junk/v1/audio/voices": httpx.Response(200, text="<html>")}.get(request.url.path, httpx.Response(500))
+    monkeypatch.setattr(discovery.httpx, "AsyncClient", lambda **kw: real(transport=httpx.MockTransport(handler), **kw))
+    run = lambda path, key=None: asyncio.run(discovery.fetch_voices(f"http://srv{path}/v1", key))  # noqa: E731
+    assert run("/ok", "sk-1") == ["a", {"id": "b"}] and seen["auth"] == "Bearer sk-1"
+    assert run("/bad") is None and run("/junk") is None
+
+
+def test_endpoint_add_and_rescan_discover_voices(client, monkeypatch):
+    st = fake_network(monkeypatch, ["kokoro", "chat-llm"], ["af_heart", "am_michael"])
+    ep = client.post("/api/endpoints", json={"name": f"kok-{time.time_ns()}", "base_url": "http://kokoro-x/v1", "probe": False}).json()
+    by = {m["upstream_id"]: m for m in ep["models"]}
+    assert by["kokoro"]["capabilities"] == ["tts"] and by["kokoro"]["voices"] == ["af_heart", "am_michael"]
+    assert not by["chat-llm"].get("voices")                                  # only TTS models carry voices
+    assert st["calls"] == 1                                                   # one request per endpoint, not per model
+
+    st["voices"] = ["af_heart", "af_bella", "am_michael"]                    # the upstream gained a voice
+    ep = client.post(f"/api/endpoints/{ep['id']}/rescan?probe=false").json()
+    assert {m["upstream_id"]: m for m in ep["models"]}["kokoro"]["voices"] == ["af_heart", "af_bella", "am_michael"]
+    st["voices"] = None                                                       # a failed lookup keeps what was found before
+    ep = client.post(f"/api/endpoints/{ep['id']}/rescan?probe=false").json()
+    assert {m["upstream_id"]: m for m in ep["models"]}["kokoro"]["voices"] == ["af_heart", "af_bella", "am_michael"]
+
+
+def test_refresh_voices_and_gateway_exposes_them_for_the_checklist(client, monkeypatch):
+    st = fake_network(monkeypatch, ["kokoro", "chat-llm"], ["af_heart"])
+    ep = client.post("/api/endpoints", json={"name": f"kok-{time.time_ns()}", "base_url": "http://kokoro-y/v1", "probe": False}).json()
+    by = {m["upstream_id"]: m for m in ep["models"]}
+    st["voices"] = ["af_heart", "am_adam"]
+    r = client.post(f"/api/models/{by['kokoro']['id']}/voices/refresh")
+    assert r.status_code == 200 and r.json()["voices"] == ["af_heart", "am_adam"]
+    assert client.post(f"/api/models/{by['chat-llm']['id']}/voices/refresh").status_code == 400      # not a TTS model
+    st["voices"] = None
+    r = client.post(f"/api/models/{by['kokoro']['id']}/voices/refresh")
+    assert r.status_code == 400 and "gateway editor" in r.json()["detail"]
+    assert client.post("/api/models/999999/voices/refresh").status_code == 404
+    # the gateway read model carries the discovered voices of each member, so the editor can show them as a checklist
+    client.patch(f"/api/models/{by['kokoro']['id']}", json={"enabled": True})
+    g = client.post("/api/gateways", json={"name": f"vg-{time.time_ns()}", "models": [{"public_name": "speech", "members": [{"model_id": by["kokoro"]["id"]}]}]}).json()
+    assert g["models"][0]["members"][0]["voices"] == ["af_heart", "am_adam"]

@@ -29,6 +29,7 @@ class Model(SQLModel, table=True):
     max_slots: int = 4
     context_length: Optional[int] = None
     enabled: bool = True
+    voices: Optional[list] = Field(default=None, sa_column=Column(JSON))  # TTS: voices the upstream reported via /audio/voices (discovered)
 
 
 class Gateway(SQLModel, table=True):

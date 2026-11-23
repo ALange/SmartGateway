@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from sqlmodel import select
 
 from . import config, events, settings_store, unified
+from .voices import parse_voices as _parse_voices, voice_id as _voice_id
 from .compat import anthropic as anth
 from .compat import responses as resp_api
 from .crypto import hash_key
@@ -230,20 +231,6 @@ _VOICES_TTL, _VOICES_NEG_TTL = 60, 10
 _voices_cache: dict = {}  # upstream base_url -> (expires, voices)
 
 
-def _voice_id(v) -> str:
-    if isinstance(v, str):
-        return v
-    if isinstance(v, dict):
-        return str(v.get("id") or v.get("voice_id") or v.get("name") or "")
-    return ""
-
-
-def _parse_voices(data) -> list:
-    """Kokoro-FastAPI answers {"voices": [...]}; some servers answer a bare list. Items are strings or objects."""
-    items = data.get("voices") if isinstance(data, dict) else data
-    return [v for v in items if _voice_id(v)][:500] if isinstance(items, list) else []
-
-
 async def _upstream_voices(c: Candidate) -> list:
     hit = _voices_cache.get(c.base_url)
     if hit and hit[0] > time.time():
@@ -264,9 +251,9 @@ async def _upstream_voices(c: Candidate) -> list:
     return voices
 
 
-async def audio_voices(gw: Gateway, key, wanted: str = ""):
-    """GET /audio/voices: the voices of one TTS model (?model=) or of every TTS model of the gateway. A voice list set on the model wins;
-    otherwise the upstream's own /audio/voices answer is used."""
+async def _voices_list(gw: Gateway, key, wanted: str = ""):
+    """(voices, error response) for one TTS model (`wanted`) or for every TTS model of the gateway the key may use. A voice list set on the
+    model wins; otherwise the upstream's own /audio/voices answer is used. The list may be empty when no model has voices."""
     with session() as s:
         gms = [g for g in s.exec(select(GatewayModel).where(GatewayModel.gateway_id == gw.id, GatewayModel.enabled == True)).all()]  # noqa: E712
         for g in gms:
@@ -275,10 +262,10 @@ async def audio_voices(gw: Gateway, key, wanted: str = ""):
     if wanted:
         gm, shown = match_model(gms, wanted)
         if gm is None:
-            return err(404, f"Model '{wanted}' not found on this gateway. Available: "
-                            + ", ".join(n for g in gms for n in model_names(g)), "model_not_found")
+            return None, err(404, f"Model '{wanted}' not found on this gateway. Available: "
+                                  + ", ".join(n for g in gms for n in model_names(g)), "model_not_found")
         if allowed and gm.public_name not in allowed and shown not in allowed:
-            return err(403, f"This API key is not allowed to use model '{shown}'", "permission_denied")
+            return None, err(403, f"This API key is not allowed to use model '{shown}'", "permission_denied")
         picked = [gm]
     else:
         picked = [g for g in gms if not allowed or g.public_name in allowed or any(n in allowed for n in model_names(g))]
@@ -288,7 +275,7 @@ async def audio_voices(gw: Gateway, key, wanted: str = ""):
         if tts:
             work.append((g, tts))
     if wanted and not work:
-        return err(400, f"Model '{wanted}' has no text-to-speech member", "capability_unavailable")
+        return None, err(400, f"Model '{wanted}' has no text-to-speech member", "capability_unavailable")
 
     async def voices_of(g, tts) -> list:
         if g.voices:
@@ -300,17 +287,55 @@ async def audio_voices(gw: Gateway, key, wanted: str = ""):
         return found
 
     merged: list = []
-    seen: set = set()
     for part in await asyncio.gather(*(voices_of(g, t) for g, t in work)):
-        for v in part:
-            vid = _voice_id(v)
-            if vid and vid not in seen:
-                seen.add(vid)
-                merged.append(v)
-    if not merged:
+        merged += part
+    return merged, None
+
+
+def _merge_voices(parts: list) -> list:
+    out, seen = [], set()
+    for v in parts:
+        vid = _voice_id(v)
+        if vid and vid not in seen:
+            seen.add(vid)
+            out.append(v)
+    return out
+
+
+def _voices_reply(voices: list):
+    if not voices:
         return err(404, "No voices are available. Set a voice list on the TTS model in the gateway editor, or use an upstream "
                         "that serves /audio/voices.", "voices_unavailable")
-    return {"voices": merged}
+    return {"voices": voices}
+
+
+async def audio_voices(gw: Gateway, key, wanted: str = ""):
+    """GET /audio/voices on a gateway URL."""
+    voices, e = await _voices_list(gw, key, wanted)
+    return e or _voices_reply(_merge_voices(voices))
+
+
+async def unified_voices(aliases: list[dict], mode: str, request: Request):
+    """GET /unified/v1/audio/voices without ?model=: the voices of every TTS model the caller may use on the unified endpoint
+    (exposed gateways and directly exposed models), merged. Access is decided exactly like for /unified/v1/models."""
+    strict = bool(unified.keys())
+    parts: list = []
+    seen: set = set()
+    for a in aliases:
+        gw = a["gateway"]
+        if (gw.id, a["model"]) in seen:   # the gateway name, Name/model and extra names all point at the same model
+            continue
+        seen.add((gw.id, a["model"]))
+        if mode == "all":
+            key = None
+        else:
+            g, key, e = authenticate(gw.slug, request, allow_internal=True)
+            if e or (strict and key is None):
+                continue
+        voices, e = await _voices_list(gw, key, a["model"])
+        if not e:
+            parts += voices
+    return _voices_reply(_merge_voices(parts))
 
 
 async def log_request(rec: RequestLog, comp_events: Optional[list] = None) -> None:
@@ -1226,8 +1251,8 @@ async def unified_route(path: str, request: Request):
         return {"object": "list", "data": _unified_models(aliases, request, mode)}
     if route == "audio/voices" and request.method == "GET":
         wanted = request.query_params.get("model", "").strip()
-        if not wanted:
-            return await _compat_error(err(400, "Add ?model=<gateway name or alias> to choose whose voices to list", "invalid_request"), route, request)
+        if not wanted:   # clients such as Open WebUI send none: everything the caller may use
+            return await unified_voices(aliases, mode, request)
         gw, key, entry, e = _unified_target(wanted, aliases, mode, request)
         if e:
             return await _compat_error(e, route, request)
