@@ -99,7 +99,12 @@ Combine upstream models behind one URL with your own public model names. Strateg
 fastest, random, **tiered** (by prompt complexity), plus fallback members and sticky sessions (`X-SG-Session` / `user`). Per model you can
 set a system prompt, default parameters, a max-tokens ceiling, caching and compression. Requests can steer routing with `X-SG-Require`.
 
-**Routing order & fallbacks:** in the gateway editor each public model shows its upstream models as a chain of steps: step 1 is tried
+**The gateway editor** is split into tabs: *Gateway* (name, slug, defaults), *Models* and *API keys*. Each public model has its own sections, and
+which ones appear depends on what the model contains: *Upstream models* always; *Routing & fallbacks* from two upstream models on; *Audio* when
+an upstream model does text-to-speech or speech-to-text; *Cache & compression* for chat and embedding models; *Safety* and *Overrides* for chat
+models. A tab that appears because of a change you just made is marked "new", and tabs show a badge when something is set in them.
+
+**Routing order & fallbacks:** in the *Routing & fallbacks* tab each public model shows its upstream models as a chain of steps: step 1 is tried
 first, and when none of its models can answer (down, busy, error, rate limit) the next step takes over. Models in the same step share the
 load. Drag models between steps (or use the arrows), switch "wait for the steps above" per fallback step, and use the power button to
 preview which model would serve if another failed (a preview only, nothing is saved). With "Priority with failover" the order is strict;
@@ -113,6 +118,11 @@ or of one model with `?model=` (on the unified endpoint that is a gateway name o
 `{"voices": [...]}`), merging several TTS models. Voices are discovered when an endpoint is added or rescanned and shown as a checklist in the gateway editor, so you can offer a subset
 without typing names (**Refresh from upstream** re-reads them); models exposed directly on the unified endpoint (Gateways -> Unified) get the same checklist. Nothing selected means every voice the upstream reports. For servers that
 have no such endpoint, type the names in the same field.
+
+**Audio defaults:** the *Audio* tab of a public model also sets defaults that are used only when a request leaves the setting out (a client's own
+value always wins): for text-to-speech a default voice, format (`mp3`, `opus`, `aac`, `flac`, `wav`, `pcm`) and speed (0.25 to 4); for speech-to-text a
+default language (transcriptions only, translations are always into English), format and temperature. They apply to `audio/speech`,
+`audio/transcriptions` and `audio/translations`, never to chat requests.
 
 ### Council gateways
 A **council** gateway turns several models into one better answer, behind an ordinary `chat/completions` URL (Gateways → **Council** tab).

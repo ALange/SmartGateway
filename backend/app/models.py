@@ -65,7 +65,8 @@ class GatewayModel(SQLModel, table=True):
     sticky: bool = False
     system_prompt: Optional[str] = None
     max_tokens_cap: Optional[int] = None
-    default_params: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    default_params: dict = Field(default_factory=dict, sa_column=Column(JSON))   # chat routes only
+    audio_defaults: Optional[dict] = Field(default=None, sa_column=Column(JSON))  # {"speech": {voice, response_format, speed}, "transcription": {language, response_format, temperature}}
     cache_enabled: bool = False
     cache_ttl: Optional[int] = None  # seconds; None = global default
     cache_any_temperature: bool = False  # False: only temperature == 0 (or X-SG-Cache: 1)

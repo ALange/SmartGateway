@@ -485,6 +485,15 @@ async def dispatch(gw: Gateway, key, route: str, body: dict, form_files, headers
             if not have:
                 body["max_tokens"] = gm.max_tokens_cap
 
+    ad = gm.audio_defaults or {}   # per-model audio defaults: only what the client left out (a client's own value always wins)
+    if route == "audio/speech":
+        for k, v in (ad.get("speech") or {}).items():
+            body.setdefault(k, v)
+    elif route in ("audio/transcriptions", "audio/translations"):
+        for k, v in (ad.get("transcription") or {}).items():
+            if k != "language" or route == "audio/transcriptions":   # a translation is always into English
+                body.setdefault(k, v)
+
     prompt_est, out_est = estimate_tokens(route, body)
     try:
         token = limiter.admit(key, prompt_est + out_est)
