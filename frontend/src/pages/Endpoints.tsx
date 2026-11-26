@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { ChevronRight, Loader2, Plus, RefreshCw, Trash2, Sparkles } from "lucide-react";
+import { ChevronRight, KeyRound, Loader2, Plus, RefreshCw, Trash2, Sparkles } from "lucide-react";
 import { ALL_CAPS, api } from "../api";
 import { useLive } from "../live";
 import { CapChip, Empty, Modal, PageHeader, StatusDot } from "../components/ui";
+import OAuthAccountDialog from "../components/OAuthAccountDialog";
 
 const TYPES: Record<string, { label: string; name: string; base_url: string; keyHint: string; notes: string[] }> = {
   generic: { label: "OpenAI-compatible", name: "", base_url: "", keyHint: "optional", notes: [] },
@@ -63,6 +64,7 @@ function AddEndpoint({ onClose, onDone }: { onClose: () => void; onDone: () => v
 export default function Endpoints() {
   const [eps, setEps] = useState<any[]>([]);
   const [adding, setAdding] = useState(false);
+  const [account, setAccount] = useState<{ endpointId?: number } | null>(null);   // ChatGPT / Codex sign-in dialog
   const [busy, setBusy] = useState<number | null>(null);
   const [open, setOpen] = useState<Set<number>>(new Set());   // collapsed by default; click an endpoint to see its models
   const toggle = (id: number) => setOpen((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -77,7 +79,7 @@ export default function Endpoints() {
   return (
     <div className="fadein">
       <PageHeader title="Endpoints" sub="Upstream OpenAI-compatible servers and the models they offer."
-        actions={<button className="btn primary" onClick={() => setAdding(true)}><Plus size={16} /> Add endpoint</button>} />
+        actions={<div className="flex gap-2"><button className="btn" onClick={() => setAccount({})}><KeyRound size={16} /> Add ChatGPT / Codex account</button><button className="btn primary" onClick={() => setAdding(true)}><Plus size={16} /> Add endpoint</button></div>} />
       {eps.length === 0 && <Empty>No endpoints yet. Add one to discover its models and capabilities.</Empty>}
       <div className="space-y-5">
         {eps.map((ep) => {
@@ -90,13 +92,14 @@ export default function Endpoints() {
                   <ChevronRight size={16} className={`shrink-0 text-[#787884] transition-transform ${open.has(ep.id) ? "rotate-90" : ""}`} />
                   <StatusDot status={status} />
                   <div>
-                    <div className="flex items-center gap-2 text-lg font-semibold">{ep.name}{ep.provider && <span className="chip" style={{ color: "#a79cff", background: "#6c5ce722" }}>{ep.provider === "opencode-go" ? "OpenCode Go" : "OpenCode Zen"}</span>}</div>
-                    <div className="mono text-xs text-[#8e8e9a]">{ep.base_url}{ep.api_key ? " · key set" : ""}{ep.slot_source && ep.slot_source !== "none" ? ` · live load via ${ep.slot_source}` : ""}</div>
+                    <div className="flex items-center gap-2 text-lg font-semibold">{ep.name}{ep.provider && <span className="chip" style={{ color: "#a79cff", background: "#6c5ce722" }}>{ep.provider === "opencode-go" ? "OpenCode Go" : ep.provider === "codex-oauth" ? "ChatGPT / Codex" : "OpenCode Zen"}</span>}</div>
+                    <div className="mono text-xs text-[#8e8e9a]">{ep.account ? `${ep.account.email || "signed in"}${ep.account.plan ? ` · ${ep.account.plan} plan` : ""}${ep.account.needs_login ? " · needs sign-in" : ""}` : ep.base_url}{ep.api_key ? " · key set" : ""}{ep.slot_source && ep.slot_source !== "none" ? ` · live load via ${ep.slot_source}` : ""}</div>
                     <div className="mt-0.5 text-xs text-[#787884]">{ep.models.length} model{ep.models.length === 1 ? "" : "s"}{ep.models.length ? ` · ${ep.models.filter((m: any) => m.enabled).length} enabled` : ""}</div>
                   </div>
                   {status === "offline" && ep.last_error && <span className="chip" style={{ color: "#d9776f", background: "#d9776f22" }}>{ep.last_error}</span>}
                 </div>
                 <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                  {ep.provider === "codex-oauth" && <button className={`btn ${ep.account?.needs_login ? "primary" : ""}`} onClick={() => setAccount({ endpointId: ep.id })}><KeyRound size={15} /> Sign in again</button>}
                   <button className="btn" disabled={busy === ep.id} onClick={() => rescan(ep.id)}>
                     <RefreshCw size={15} className={busy === ep.id ? "animate-spin" : ""} /> Re-scan
                   </button>
@@ -141,6 +144,7 @@ export default function Endpoints() {
         })}
       </div>
       {adding && <AddEndpoint onClose={() => setAdding(false)} onDone={load} />}
+      {account && <OAuthAccountDialog endpointId={account.endpointId} onClose={() => setAccount(null)} onDone={load} />}
     </div>
   );
 }

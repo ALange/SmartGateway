@@ -313,3 +313,18 @@ class AdminSession(SQLModel, table=True):
     sid: str = Field(primary_key=True)
     exp: float = Field(index=True)
     created_at: float = Field(default_factory=time.time)
+
+
+class OAuthAccount(SQLModel, table=True):
+    """A subscription account (ChatGPT/Codex) behind one Endpoint. The tokens are encrypted and never leave the server."""
+    endpoint_id: int = Field(foreign_key="endpoint.id", primary_key=True)
+    kind: str = "codex"
+    access_token: Optional[str] = Field(default=None, sa_column=Column(EncryptedString))
+    refresh_token: Optional[str] = Field(default=None, sa_column=Column(EncryptedString))
+    expires_at: float = 0                       # access token expiry (unix seconds)
+    account_id: Optional[str] = None            # ChatGPT account id (sent as the ChatGPT-Account-Id header)
+    email: Optional[str] = None
+    plan: Optional[str] = None
+    needs_login: bool = False                   # the refresh token is dead: sign in again
+    last_refresh: Optional[float] = None
+    last_error: Optional[str] = None

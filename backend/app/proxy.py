@@ -18,7 +18,8 @@ from . import config, events, settings_store, unified
 from .voices import parse_voices as _parse_voices, voice_id as _voice_id
 from .compat import anthropic as anth
 from .compat import responses as resp_api
-from . import crypto
+from . import accounts, crypto
+from .accounts import upstream as accounts_upstream
 from .crypto import hash_key
 from .db import session
 from . import guardrails
@@ -700,13 +701,16 @@ async def _route(gw, gm, key, route, body, form_files, headers_in, token, prompt
         url = f"{c.base_url}/{route}"
         t_send = time.time()
         try:
-            if form_files is not None:
-                req = client.build_request("POST", url, data={k: str(v) for k, v in fwd.items()},
-                                           files=form_files, headers=headers)
+            if accounts.is_oauth(c.provider):   # subscription account: sign-in, token refresh and the vendor's own API live in accounts/
+                resp = await accounts_upstream.send(client, c, route, fwd, form_files)
             else:
-                headers["Content-Type"] = "application/json"
-                req = client.build_request("POST", url, content=json.dumps(fwd), headers=headers)
-            resp = await client.send(req, stream=True)
+                if form_files is not None:
+                    req = client.build_request("POST", url, data={k: str(v) for k, v in fwd.items()},
+                                               files=form_files, headers=headers)
+                else:
+                    headers["Content-Type"] = "application/json"
+                    req = client.build_request("POST", url, content=json.dumps(fwd), headers=headers)
+                resp = await client.send(req, stream=True)
         except asyncio.CancelledError:
             scheduler.release(c, ok=True)
             raise

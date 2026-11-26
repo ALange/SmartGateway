@@ -4,9 +4,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
-from .. import config, crypto, discovery
+from .. import accounts, config, crypto, discovery
 from ..db import get_session
-from ..models import Endpoint, GatewayModel, Member, Model
+from ..models import Endpoint, GatewayModel, Member, Model, OAuthAccount
 from ..router import health
 from ..router.scheduler import scheduler
 
@@ -38,6 +38,9 @@ def ep_out(ep: Endpoint, s: Session) -> dict:
     d = ep.model_dump()
     d["api_key"] = bool(ep.api_key)
     d["key_unreadable"] = crypto.is_unreadable(ep.api_key)
+    if accounts.is_oauth(ep.provider):   # a subscription account: who it is and whether it needs a new sign-in (never the tokens)
+        from ..accounts import codex_auth
+        d["account"] = codex_auth.account_info(ep.id)
     d["models"] = [m.model_dump() for m in models]
     return d
 
@@ -59,8 +62,12 @@ def _need_readable_key(ep: Endpoint) -> None:
 
 async def sync_models(ep: Endpoint, s: Session, probe: bool, free_out: Optional[list] = None) -> int:
     _need_readable_key(ep)
-    ep.provider = ep.provider or discovery.detect_provider(ep.base_url)
-    found = await discovery.discover(ep.base_url, ep.api_key, probe and not ep.provider, ep.provider)
+    if accounts.is_oauth(ep.provider):
+        from ..accounts import catalog
+        found = await catalog.discover(ep.id)
+    else:
+        ep.provider = ep.provider or discovery.detect_provider(ep.base_url)
+        found = await discovery.discover(ep.base_url, ep.api_key, probe and not ep.provider, ep.provider)
     ep.slot_source = "none" if ep.provider else await discovery.detect_slot_source(ep.base_url, ep.api_key)
     s.add(ep)
     if free_out is not None:
@@ -147,6 +154,8 @@ def patch_endpoint(ep_id: int, body: EndpointPatch, s: Session = Depends(get_ses
         raise HTTPException(404)
     if body.name is not None:
         ep.name = body.name
+    if accounts.is_oauth(ep.provider) and (body.base_url is not None or body.api_key is not None):
+        raise HTTPException(400, "A signed-in account has a fixed address and no API key; use 'Sign in again' to change the account")
     if body.base_url is not None:
         ep.base_url = discovery.normalize_base_url(body.base_url)
         ep.provider = discovery.detect_provider(ep.base_url) or ep.provider
@@ -180,6 +189,9 @@ def delete_endpoint(ep_id: int, s: Session = Depends(get_session)):
         raise HTTPException(404)
     for m in s.exec(select(Model).where(Model.endpoint_id == ep_id)).all():
         _delete_model(s, m)
+    acc = s.get(OAuthAccount, ep_id)
+    if acc:   # the stored tokens go with the endpoint
+        s.delete(acc)
     s.delete(ep)
     s.commit()
     health.status.pop(ep_id, None)
