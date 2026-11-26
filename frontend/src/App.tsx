@@ -8,6 +8,7 @@ import Compression from "./pages/Compression";
 import Filters from "./pages/Filters";
 import { api } from "./api";
 import Login from "./pages/Login";
+import Setup from "./pages/Setup";
 import Playground from "./pages/Playground";
 import { useLive } from "./live";
 import Dashboard from "./pages/Dashboard";
@@ -47,10 +48,11 @@ const nav = groups.flatMap((g) => g.items);
 const isOn = (n: NavItem, path: string) => [n.to, ...(n.also || [])].some((p) => (p === "/" ? path === "/" : path === p || path.startsWith(p + "/")));
 
 export default function App() {
-  const [auth, setAuth] = useState<{ auth_required: boolean; authenticated: boolean } | null>(null);
+  const [auth, setAuth] = useState<{ auth_required: boolean; authenticated: boolean; setup_required?: boolean } | null>(null);
   const refresh = () => api("/api/session").then(setAuth).catch(() => setAuth({ auth_required: false, authenticated: true }));
   useEffect(() => { refresh(); const h = () => setAuth({ auth_required: true, authenticated: false }); window.addEventListener("sg-unauth", h); return () => window.removeEventListener("sg-unauth", h); }, []);
   if (!auth) return null;
+  if (auth.setup_required) return <Setup onDone={refresh} />;
   if (auth.auth_required && !auth.authenticated) return <Login onDone={refresh} />;
   return <Shell auth={auth} onLogout={async () => { await api("/api/logout", { method: "POST" }); refresh(); }} />;
 }

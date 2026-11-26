@@ -4,7 +4,9 @@ import hashlib
 import hmac
 import logging
 import os
+import re
 import secrets
+import threading
 import time
 from collections import deque
 from contextlib import asynccontextmanager
@@ -30,7 +32,10 @@ from .router import health
 async def lifespan(app: FastAPI):
     init_db()
     log = logging.getLogger("smartgateway")
-    if config.GENERATED_ADMIN_PASSWORD and config.GENERATED_ADMIN_PASSWORD_IS_NEW:
+    if config.SETUP_PENDING:
+        print("SmartGateway: first start - open the web UI and create the admin account. "
+              f"Setup code: {config.setup_code()}  (also stored in {config.DATA_DIR}/setup_code; it stops working once the account exists)", flush=True)
+    elif config.GENERATED_ADMIN_PASSWORD and config.GENERATED_ADMIN_PASSWORD_IS_NEW:
         print(f"SmartGateway: SG_ADMIN_PASSWORD is not set, so a random admin password was generated (user '{os.environ.get('SG_ADMIN_USER', 'admin')}'): "
               f"{config.ADMIN_PASSWORD}  (shown only this once; also stored in {config.DATA_DIR}/admin_password; set SG_ADMIN_PASSWORD or change it in Settings)", flush=True)
     elif config.GENERATED_ADMIN_PASSWORD:
@@ -121,7 +126,7 @@ def revoke_session(token: str | None = None, everyone: bool = False) -> bool:
 
 
 def admin_user() -> str:
-    return os.environ.get("SG_ADMIN_USER", "admin")
+    return config.stored_username() or os.environ.get("SG_ADMIN_USER", "admin")   # the wizard's choice wins over the environment default
 
 
 def _user_ok(candidate: str) -> bool:
@@ -129,6 +134,8 @@ def _user_ok(candidate: str) -> bool:
 
 
 def request_authed(headers, cookies) -> bool:
+    if config.SETUP_PENDING:
+        return False   # nobody is an admin until the setup wizard has created the account
     if not config.ADMIN_PASSWORD:
         return True
     if valid_session(cookies.get(COOKIE)):
@@ -218,6 +225,8 @@ async def guard(request: Request, call_next):
                     "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS", "Access-Control-Expose-Headers": "X-SG-Upstream,X-SG-Endpoint,X-SG-Request-Id,X-SG-Cache,Mcp-Session-Id"}
         if request.method == "OPTIONS":
             return Response(status_code=204, headers=cors)
+    if config.SETUP_PENDING and p.startswith("/api/") and p not in ("/api/session", "/api/setup", "/api/ws"):
+        return JSONResponse({"detail": "Setup required: open the web UI and create the admin account"}, status_code=403)
     # admin protection for the management API (UI shell stays public so the login page can load)
     if config.ADMIN_PASSWORD and p.startswith("/api/") and p not in ("/api/login", "/api/session", "/api/ws"):
         ip = request.client.host if request.client else "?"
@@ -261,7 +270,48 @@ class LoginIn(BaseModel):
 @app.get("/api/session")
 def session_info(request: Request):
     authed = request_authed(request.headers, request.cookies)
-    return {"auth_required": bool(config.ADMIN_PASSWORD), "authenticated": authed, **({"password_source": config.PASSWORD_SOURCE} if authed else {})}
+    return {"auth_required": bool(config.ADMIN_PASSWORD) or config.SETUP_PENDING, "authenticated": authed, "setup_required": config.SETUP_PENDING,
+            **({"password_source": config.PASSWORD_SOURCE} if authed else {})}
+
+
+class SetupIn(BaseModel):
+    code: str
+    username: str
+    password: str
+
+
+_setup_lock = threading.Lock()
+_USER_RE = re.compile(r"^[A-Za-z0-9._@-]{3,40}$")
+
+
+@app.post("/api/setup")
+def setup(body: SetupIn, request: Request):
+    """First-run wizard: create the admin account. Only possible while the install has no admin, and only with the one-time code from the log."""
+    ip = request.client.host if request.client else "?"
+    if not config.SETUP_PENDING:
+        raise HTTPException(409, "Setup is already complete")
+    if _locked(ip):
+        return JSONResponse({"detail": "Too many failed attempts, try again in a few minutes"}, status_code=429)
+    expected = config.setup_code()
+    if not expected or not secrets.compare_digest(body.code.strip().upper().encode(), expected.encode()):
+        _fail(ip)
+        audit.record("setup", ip, "setup failed", "session", status=403, method="POST", path="/api/setup")
+        return JSONResponse({"detail": "Wrong setup code (see the container log: docker logs <container>)"}, status_code=403)
+    user = body.username.strip()
+    if not _USER_RE.match(user):
+        raise HTTPException(400, "The user name must be 3-40 characters: letters, digits and . _ @ -")
+    if len(body.password) < config.MIN_PASSWORD:
+        raise HTTPException(400, f"The password must be at least {config.MIN_PASSWORD} characters")
+    with _setup_lock:
+        if not config.SETUP_PENDING:   # somebody finished it a moment ago
+            raise HTTPException(409, "Setup is already complete")
+        config.complete_setup(user, body.password)
+    _fails.pop(ip, None)
+    audit.record(user, ip, "admin account created", "session", method="POST", path="/api/setup")
+    r = JSONResponse({"ok": True})
+    secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
+    r.set_cookie(COOKIE, make_session(), max_age=SESSION_TTL, httponly=True, samesite="lax", secure=secure)
+    return r
 
 
 class PasswordIn(BaseModel):
