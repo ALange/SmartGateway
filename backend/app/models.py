@@ -30,6 +30,12 @@ class Model(SQLModel, table=True):
     context_length: Optional[int] = None
     enabled: bool = True
     voices: Optional[list] = Field(default=None, sa_column=Column(JSON))  # TTS: voices the upstream reported via /audio/voices (discovered)
+    # prices in USD per 1M tokens: the catalog's own `cost` block (OpenCode) and/or a manual override (the admin's wins)
+    catalog_cost: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    price_in: Optional[float] = None
+    price_out: Optional[float] = None
+    price_cache_read: Optional[float] = None
+    price_manual: bool = False
 
 
 class Gateway(SQLModel, table=True):
@@ -120,6 +126,7 @@ class RequestLog(SQLModel, table=True):
     total_ms: int = 0
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    cached_tokens: int = 0     # part of prompt_tokens the upstream served from its prompt cache (priced lower)
     attempts: int = 1
     error: Optional[str] = None
     finish_reason: Optional[str] = None   # what the model reported: stop | length | tool_calls | content_filter | None (no finish chunk)

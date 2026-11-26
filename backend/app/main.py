@@ -21,7 +21,7 @@ from pydantic import BaseModel
 
 from . import audit, config, crypto, proxy, retention, settings_store
 from .bodylimit import BodyLimit
-from .api import accounts as accounts_api, compression as compression_api, mcp_endpoints as mcp_endpoints_api, mcp_gateways as mcp_gateways_api, content_filters as content_filters_api, endpoints, gateways, insights as insights_api, maintenance as maintenance_api, settings as settings_api, stats, stress as stress_api, unified as unified_api
+from .api import accounts as accounts_api, compression as compression_api, cost as cost_api, mcp_endpoints as mcp_endpoints_api, mcp_gateways as mcp_gateways_api, content_filters as content_filters_api, endpoints, gateways, insights as insights_api, maintenance as maintenance_api, settings as settings_api, stats, stress as stress_api, unified as unified_api
 from .db import engine, init_db, session
 from .mcp import registry as mcp_registry, server as mcp_server
 from .models import AdminSession, Endpoint, McpEndpoint
@@ -380,6 +380,7 @@ def healthz():
 app.add_middleware(BodyLimit)   # added after the guard middleware, so it is the outermost layer
 app.include_router(endpoints.router)
 app.include_router(accounts_api.router)
+app.include_router(cost_api.router)
 app.include_router(gateways.router)
 app.include_router(stats.router)
 app.include_router(maintenance_api.router)

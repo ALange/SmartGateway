@@ -344,6 +344,15 @@ async def unified_voices(aliases: list[dict], mode: str, request: Request):
     return _voices_reply(_merge_voices(parts))
 
 
+def _cached_tokens(usage: dict) -> int:
+    """Prompt tokens the upstream served from its cache (OpenAI: prompt_tokens_details.cached_tokens; some servers: cached_tokens)."""
+    try:
+        d = usage.get("prompt_tokens_details") or {}
+        return max(0, int(d.get("cached_tokens") or usage.get("cached_tokens") or 0))
+    except (TypeError, ValueError, AttributeError):
+        return 0
+
+
 async def log_request(rec: RequestLog, comp_events: Optional[list] = None) -> None:
     if no_request_log.get():  # synthetic stress-test traffic is not logged
         return
@@ -848,6 +857,7 @@ async def _route(gw, gm, key, route, body, form_files, headers_in, token, prompt
                 data = json.loads(raw)
                 usage = data.get("usage") or {} if isinstance(data, dict) else {}
                 rec.prompt_tokens = int(usage.get("prompt_tokens") or 0)
+                rec.cached_tokens = _cached_tokens(usage)
                 rec.completion_tokens = int(usage.get("completion_tokens") or 0)
                 if resp.status_code == 200 and isinstance(data, dict) and route in CHAT_ROUTES:
                     ch0 = (data.get("choices") or [{}])[0] or {}
@@ -900,6 +910,7 @@ async def _route(gw, gm, key, route, body, form_files, headers_in, token, prompt
                         finish = ch0.get("finish_reason") or finish
                         if obj.get("usage"):
                             rec.prompt_tokens = int(obj["usage"].get("prompt_tokens") or 0)
+                            rec.cached_tokens = _cached_tokens(obj["usage"])
                             rec.completion_tokens = int(obj["usage"].get("completion_tokens") or 0)
                         rewrite_model(obj, gm.public_name)
                         line = "data: " + json.dumps(obj, separators=(",", ":"))

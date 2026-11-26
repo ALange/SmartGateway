@@ -87,6 +87,8 @@ async def sync_models(ep: Endpoint, s: Session, probe: bool, free_out: Optional[
             m.max_slots = dm.max_slots
         if dm.context_length is not None:
             m.context_length = dm.context_length
+        if ep.provider:   # a hosted catalog states its prices; a model it dropped the price of loses it
+            m.catalog_cost = dm.cost
         s.add(m)
     # text-to-speech models: remember the voices the upstream offers; a failed lookup keeps the old list
     tts = [m for m in s.exec(select(Model).where(Model.endpoint_id == ep.id)).all() if "tts" in (m.capabilities or []) and m.upstream_id not in existing]

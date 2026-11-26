@@ -2,9 +2,10 @@ import { NavLink, Route, Routes, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
 import Logo from "./components/Logo";
 import CommandPalette, { PaletteItem } from "./components/CommandPalette";
-import { Activity, Users, LayoutGrid, LogOut, Plus, Search, MessageSquare, Network, Plug, Plug2, Boxes, Minimize2, ListFilter, ScrollText, Settings as SettingsIcon } from "lucide-react";
+import { Activity, Users, LayoutGrid, LogOut, Plus, Search, MessageSquare, Network, Plug, Plug2, Boxes, Minimize2, ListFilter, ScrollText, Settings as SettingsIcon, Wallet } from "lucide-react";
 import Settings from "./pages/Settings";
 import Compression from "./pages/Compression";
+import CostTracking from "./pages/CostTracking";
 import Filters from "./pages/Filters";
 import { api } from "./api";
 import Login from "./pages/Login";
@@ -39,6 +40,7 @@ const groups: { title: string; items: NavItem[] }[] = [
     { to: "/mcp-gateways", label: "MCP Gateways", icon: Boxes }] },
   { title: "Insights", items: [
     { to: "/logs", label: "Request Log", icon: ScrollText },
+    { to: "/cost", label: "Cost Tracking", icon: Wallet },
     { to: "/compression", label: "Compression", icon: Minimize2 }] },
   { title: "Safety", items: [{ to: "/filters", label: "Content Filters", icon: ListFilter }] },
   { title: "System", items: [{ to: "/settings", label: "Settings", icon: SettingsIcon }] },
@@ -75,6 +77,9 @@ const quick: PaletteItem[] = [
   { label: "New MCP gateway", to: "/mcp-gateways/new", hint: "action", icon: Plus },
   { label: "Unified endpoint", to: "/unified", hint: "Gateways", icon: Network },
   { label: "Audit log", to: "/logs?tab=audit", hint: "Request Log", icon: ScrollText },
+  { label: "Cost tracking", to: "/cost", hint: "Insights", icon: Wallet },
+  { label: "Plan limits (OpenCode, Codex, Claude)", to: "/cost?tab=limits", hint: "Cost Tracking", icon: Wallet },
+  { label: "Model prices", to: "/cost?tab=prices", hint: "Cost Tracking", icon: Wallet },
   { label: "Change admin password", to: "/settings?tab=security", hint: "Settings", icon: SettingsIcon },
   { label: "Response cache and Redis", to: "/settings?tab=general", hint: "Settings", icon: SettingsIcon },
   { label: "Data retention", to: "/settings?tab=data", hint: "Settings", icon: SettingsIcon },
@@ -144,6 +149,7 @@ function Shell({ auth, onLogout }: { auth: { auth_required: boolean }; onLogout:
           <Route path="/" element={<Dashboard />} />
           <Route path="/endpoints" element={<Endpoints />} />
           <Route path="/gateways" element={<Gateways />} />
+          <Route path="/cost" element={<CostTracking />} />
           <Route path="/gateways/new" element={<GatewayEditor />} />
           <Route path="/councils" element={<Gateways kind="council" />} />
           <Route path="/councils/new" element={<CouncilEditor />} />
