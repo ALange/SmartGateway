@@ -1,7 +1,7 @@
 import VoicePicker, { splitVoices, voiceName } from "./VoicePicker";
 import AudioSettings, { hasAudioDefaults } from "./AudioSettings";
 import { Tabs, useTab } from "./Tabs";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Check, Copy, KeyRound, Layers, Loader2, Lock, Plus, Save, Trash2 } from "lucide-react";
 import { api } from "../api";
@@ -31,11 +31,19 @@ export default function UnifiedEndpoint({ onChange }: { onChange?: (v: any) => v
   const [keyErr, setKeyErr] = useState("");
   const apply = (v: any) => { onChange?.(v); setEnabled(v.enabled); setRows(v.gateways.map((g: any) => ({ ...g, aliases_text: (g.aliases || []).join(", ") }))); setDModels((v.models || []).map((m: any) => ({ ...m, aliases_text: (m.aliases || []).join(", "), voices_text: (m.voices || []).join(", ") }))); setKeys(v.keys || []); setDirty(false); };
   // top-level sections; the sections of a directly exposed model (Upstream model, Audio) work like the ones of a public model in the gateway editor
-  const [tab, setTab] = useTab(["endpoint", "gateways", "models"]);
+  const [tab, setTab] = useTab(["endpoint", "gateways", "models", "audio"]);
   const audioKind = (m: { capabilities?: string[] }) => ({ tts: !!m.capabilities?.includes("tts"), stt: !!m.capabilities?.includes("audio") && !m.capabilities?.includes("tts") });
   const [sel, setSel] = useState<number | null>(null);      // the open model
-  const [msub, setMsub] = useState("upstream");              // its open section
-  const current = tab;
+  // all voice settings live on one Audio tab, like the Audio tab of a public model in the gateway editor: a Text-to-speech and a Speech-to-text
+  // section. It only appears once a directly exposed model does speech, and is marked "new" when it does.
+  const ttsModels = dModels.filter((m) => audioKind(m).tts);
+  const sttModels = dModels.filter((m) => audioKind(m).stt);
+  const hasAudio = ttsModels.length + sttModels.length > 0;
+  const current = tab === "audio" && !hasAudio ? "endpoint" : tab;
+  const sawAudio = useRef<boolean | null>(null);
+  const [freshAudio, setFreshAudio] = useState(false);
+  useEffect(() => { if (!rows) return; if (sawAudio.current === false && hasAudio) setFreshAudio(true); sawAudio.current = hasAudio; }, [hasAudio, rows === null]); // eslint-disable-line   (the first run is the initial load: nothing is "new" then)
+  useEffect(() => { if (current === "audio") setFreshAudio(false); }, [current]);
   useEffect(() => {
     api("/api/unified").then(apply).catch(() => {});
     api("/api/endpoints").then((eps: any[]) => setAllModels(eps.flatMap((e) => (e.models || []).filter((m: any) => m.enabled !== false).map((m: any) => ({ model_id: m.id, upstream_id: m.upstream_id, endpoint: e.name, endpoint_status: e.status, capabilities: m.capabilities || [], voice_options: (m.voices || []).map(voiceName).filter(Boolean) }))))).catch(() => {});
@@ -79,7 +87,7 @@ export default function UnifiedEndpoint({ onChange }: { onChange?: (v: any) => v
     if (!m) return;
     let name = m.upstream_id, n = 2;
     while (dModels.some((x) => x.name.toLowerCase() === name.toLowerCase())) name = `${m.upstream_id}-${n++}`;
-    setDModels([...dModels, { ...m, name }]); setSel(m.model_id); setMsub("upstream"); setPick(""); setDirty(true);
+    setDModels([...dModels, { ...m, name }]); setSel(m.model_id); setPick(""); setDirty(true);
   };
   const copy = () => { navigator.clipboard?.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1500); };
 
@@ -101,6 +109,7 @@ export default function UnifiedEndpoint({ onChange }: { onChange?: (v: any) => v
         ["endpoint", "Endpoint"],
         ["gateways", "Gateways", <span key="g" className="ml-1.5 rounded-full px-1.5 text-[11px]" style={{ background: "#ffffff14", color: "#a9a9b4" }}>{exposed.length}/{rows.length}</span>],
         ["models", "Models", <span key="m" className="ml-1.5 rounded-full px-1.5 text-[11px]" style={{ background: "#ffffff14", color: "#a9a9b4" }}>{dModels.length}</span>],
+        ...(hasAudio ? [["audio", "Audio", freshAudio && current !== "audio" ? <span key="a" className="ml-1.5 rounded-full px-1.5 text-[11px]" style={{ background: "#4cc38a33", color: "#7fd1a3" }} data-testid="new-audio">new</span> : null] as [string, string, React.ReactNode]] : []),
       ]} />
 
       {current === "endpoint" && (
@@ -210,10 +219,6 @@ export default function UnifiedEndpoint({ onChange }: { onChange?: (v: any) => v
         const cur = dModels.find((m) => m.model_id === sel) || dModels[0];
         const patchM = (id: number, p: any) => { setDModels(dModels.map((x) => (x.model_id === id ? { ...x, ...p } : x))); setDirty(true); };
         const addable = allModels.filter((m) => !dModels.some((x) => x.model_id === m.model_id));
-        const kind = cur ? audioKind(cur) : { tts: false, stt: false };
-        const tabs: [string, string][] = [["upstream", "Upstream model"], ...(kind.tts || kind.stt ? [["audio", "Audio"] as [string, string]] : [])];
-        const subCurrent = tabs.some((x) => x[0] === msub) ? msub : "upstream";
-        const chosen = cur ? splitVoices(cur.voices_text || "") : [];
         const up = cur ? allModels.find((x) => x.model_id === cur.model_id) : null;
         return (
           <div>
@@ -223,7 +228,6 @@ export default function UnifiedEndpoint({ onChange }: { onChange?: (v: any) => v
                 <button key={m.model_id} role="tab" aria-selected={cur?.model_id === m.model_id} data-testid={`dmodel-pill-${m.model_id}`} onClick={() => setSel(m.model_id)}
                   className={`pill ${cur?.model_id === m.model_id ? "on" : ""}`} style={m.disabled ? { opacity: 0.6 } : undefined}>
                   <span className="mono">{m.name || "unnamed"}</span>
-                  {(audioKind(m).tts || audioKind(m).stt) && <span className="ml-1.5 rounded-full px-1.5 text-[11px]" style={{ background: "#6c5ce733", color: "#c9c2ff" }}>{audioKind(m).tts ? "tts" : "stt"}</span>}
                 </button>))}
               <select className="input !w-auto !py-1.5" value={pick} onChange={(e) => setPick(e.target.value)} data-testid="add-direct-select">
                 <option value="">Add a model…</option>
@@ -244,16 +248,8 @@ export default function UnifiedEndpoint({ onChange }: { onChange?: (v: any) => v
                   <button className="btn danger" title="Stop exposing this model" onClick={() => { setDModels(dModels.filter((x) => x.model_id !== cur.model_id)); setDirty(true); }}><Trash2 size={15} /> Remove</button>
                 </div>
 
-                <div className="mt-4 flex flex-wrap gap-2" role="tablist" aria-label="Model sections">
-                  {tabs.map(([k, label]) => (
-                    <button key={k} role="tab" aria-selected={subCurrent === k} data-testid={`mtab-${k}`} onClick={() => setMsub(k)} className={`pill ${subCurrent === k ? "on" : ""}`}>
-                      {label}
-                      {k === "audio" && (hasAudioDefaults(cur.audio_defaults) || chosen.length > 0) && <span className="ml-1.5 rounded-full px-1.5 text-[11px]" style={{ background: "#6c5ce733", color: "#c9c2ff" }}>set</span>}
-                    </button>))}
-                </div>
-
                 <div className="mt-5" style={cur.disabled ? { opacity: 0.6 } : undefined}>
-                  {subCurrent === "upstream" && (
+                  {(
                     <div>
                       <p className="mb-3 text-xs text-[#787884]">The upstream model behind <span className="mono">{cur.name || "this name"}</span>. It is served directly, so there are no fallbacks: to spread requests over several models, expose a gateway instead.</p>
                       <div className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2.5" data-testid={`upstream-${cur.upstream_id}`}>
@@ -265,18 +261,54 @@ export default function UnifiedEndpoint({ onChange }: { onChange?: (v: any) => v
                       </div>
                     </div>
                   )}
-                  {subCurrent === "audio" && (
-                    <AudioSettings tts={kind.tts} stt={kind.stt} defaults={cur.audio_defaults} voiceChoices={chosen.length ? chosen : (cur.voice_options || [])}
-                      onChange={(v) => patchM(cur.model_id, { audio_defaults: v })}
-                      voicePicker={<VoicePicker options={cur.voice_options || []} text={cur.voices_text || ""} busy={!!vBusy[cur.model_id]} err={vErr[cur.model_id] || ""}
-                        onChange={(t) => patchM(cur.model_id, { voices_text: t })} onRefresh={() => refreshVoices(cur.model_id)} />} />
-                  )}
+                  {(audioKind(cur).tts || audioKind(cur).stt) && <p className="mt-3 text-xs text-[#787884]">Its voices and audio defaults are on the Audio tab.</p>}
                 </div>
               </div>
             ) : <div className="card card-pad text-center text-sm text-[#8e8e9a]">No directly exposed models yet. Pick one above to expose it under its own name.</div>}
           </div>
         );
       })()}
+
+      {current === "audio" && (
+        <div className="space-y-8" data-testid="audio-tab">
+          <p className="text-xs text-[#787884]">Defaults are used only when a request leaves the setting out; a client's own value always wins.</p>
+          {ttsModels.length > 0 && (
+            <section data-testid="tts-section">
+              <h4 className="mb-3 text-sm font-semibold">Text-to-speech</h4>
+              <div className="space-y-4">
+                {ttsModels.map((m) => {
+                  const chosen = splitVoices(m.voices_text || "");
+                  return (
+                    <div key={m.model_id} className="rounded-lg border border-white/10 p-4" data-testid={`audio-card-${m.model_id}`}>
+                      <div className="mb-4 flex flex-wrap items-baseline gap-2"><span className="mono text-sm font-semibold">{m.name}</span>
+                        <span className="text-xs text-[#787884]"><span className="mono">{m.upstream_id}</span> @ {m.endpoint}</span>
+                        {m.disabled && <span className="chip" style={{ color: "#e0a458", background: "#e0a45822" }}>disabled</span>}
+                        {(hasAudioDefaults(m.audio_defaults) || chosen.length > 0) && <span className="chip" style={{ color: "#c9c2ff", background: "#6c5ce733" }}>set</span>}</div>
+                      <AudioSettings bare tts stt={false} defaults={m.audio_defaults} voiceChoices={chosen.length ? chosen : (m.voice_options || [])}
+                        onChange={(v) => { setDModels(dModels.map((x) => (x.model_id === m.model_id ? { ...x, audio_defaults: v } : x))); setDirty(true); }}
+                        voicePicker={<VoicePicker options={m.voice_options || []} text={m.voices_text || ""} busy={!!vBusy[m.model_id]} err={vErr[m.model_id] || ""}
+                          onChange={(t) => { setDModels(dModels.map((x) => (x.model_id === m.model_id ? { ...x, voices_text: t } : x))); setDirty(true); }} onRefresh={() => refreshVoices(m.model_id)} />} />
+                    </div>);
+                })}
+              </div>
+            </section>)}
+          {sttModels.length > 0 && (
+            <section data-testid="stt-section">
+              <h4 className="mb-3 text-sm font-semibold">Speech-to-text</h4>
+              <div className="space-y-4">
+                {sttModels.map((m) => (
+                  <div key={m.model_id} className="rounded-lg border border-white/10 p-4" data-testid={`audio-card-${m.model_id}`}>
+                    <div className="mb-4 flex flex-wrap items-baseline gap-2"><span className="mono text-sm font-semibold">{m.name}</span>
+                      <span className="text-xs text-[#787884]"><span className="mono">{m.upstream_id}</span> @ {m.endpoint}</span>
+                      {m.disabled && <span className="chip" style={{ color: "#e0a458", background: "#e0a45822" }}>disabled</span>}
+                      {hasAudioDefaults(m.audio_defaults) && <span className="chip" style={{ color: "#c9c2ff", background: "#6c5ce733" }}>set</span>}</div>
+                    <AudioSettings bare tts={false} stt defaults={m.audio_defaults} voiceChoices={[]}
+                      onChange={(v) => { setDModels(dModels.map((x) => (x.model_id === m.model_id ? { ...x, audio_defaults: v } : x))); setDirty(true); }} />
+                  </div>))}
+              </div>
+            </section>)}
+        </div>
+      )}
     </div>
   );
 }

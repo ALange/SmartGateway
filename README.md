@@ -169,9 +169,10 @@ You choose which gateways are exposed; the `model` a client sends is the **gatew
 A gateway with several public models is reachable as `Name` (its configurable default model) and as `Name/model`.
 
 The settings are split into tabs, like the gateway editor: *Endpoint* (enable, URL and the unified API keys), *Gateways* (tick the gateways to
-serve, with a default model and extra names for each) and *Models* (single upstream models exposed directly). Each directly exposed model gets
-its own panel, as a public model does in the gateway editor, with an *Upstream model* section and, for text-to-speech and speech-to-text models,
-an *Audio* section with the voices and audio defaults (the same fields as in the gateway editor). One **Save** button at the top covers all tabs.
+serve, with a default model and extra names for each) and *Models* (single upstream models exposed directly, one panel each). All voice
+settings are on one *Audio* tab, as in the gateway editor: it appears once a directly exposed model does speech and has a *Text-to-speech* section
+(voices, default voice, format and speed for each TTS model) and a *Speech-to-text* section (default language, format and temperature for each
+transcription model). One **Save** button at the top covers all tabs.
 
 Authentication: by default each gateway checks its own API key (open gateways need none). Create **unified API keys** on the *Endpoint* tab
 to protect the whole endpoint: with at least one key, every call needs a key (anonymous access is closed, even to open gateways).

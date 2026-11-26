@@ -6,8 +6,8 @@ export const hasAudioDefaults = (a: any) => !!a && Object.values(a).some((sec: a
 
 /** The audio settings of a model: defaults for speech and transcription requests (used only when a request leaves the setting out), plus whatever
  *  the caller puts in `voicePicker` (the voice checklist). Used by the gateway editor and the unified endpoint. */
-export default function AudioSettings({ tts, stt, defaults, onChange, voiceChoices, voicePicker }: {
-  tts: boolean; stt: boolean; defaults: any; onChange: (next: any | null) => void; voiceChoices: string[]; voicePicker?: ReactNode;
+export default function AudioSettings({ tts, stt, defaults, onChange, voiceChoices, voicePicker, bare }: {
+  tts: boolean; stt: boolean; defaults: any; onChange: (next: any | null) => void; voiceChoices: string[]; voicePicker?: ReactNode; bare?: boolean;
 }) {
   const ad = defaults || {};
   const setAudio = (sec: "speech" | "transcription", key: string, value: any) => {
@@ -18,10 +18,10 @@ export default function AudioSettings({ tts, stt, defaults, onChange, voiceChoic
   };
   return (
           <div className="space-y-6">
-            <p className="text-xs text-[#787884]">Defaults are used only when a request leaves the setting out; a client's own value always wins.</p>
+            {!bare && <p className="text-xs text-[#787884]">Defaults are used only when a request leaves the setting out; a client's own value always wins.</p>}
             {tts && (
               <section>
-                <h4 className="mb-3 text-sm font-semibold">Text-to-speech</h4>
+                {!bare && <h4 className="mb-3 text-sm font-semibold">Text-to-speech</h4>}
                 {voicePicker}
                 <div className="mt-4 grid gap-4 md:grid-cols-3">
                   <div><label className="lbl">Default voice</label>
@@ -38,7 +38,7 @@ export default function AudioSettings({ tts, stt, defaults, onChange, voiceChoic
               </section>)}
             {stt && (
               <section>
-                <h4 className="mb-3 text-sm font-semibold">Speech-to-text</h4>
+                {!bare && <h4 className="mb-3 text-sm font-semibold">Speech-to-text</h4>}
                 <div className="grid gap-4 md:grid-cols-3">
                   <div><label className="lbl">Default language</label>
                     <input className="input mono" placeholder="auto-detect (e.g. en, pl)" value={ad.transcription?.language || ""} onChange={(e) => setAudio("transcription", "language", e.target.value)} data-testid="audio-language" />
