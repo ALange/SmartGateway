@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import func
 from sqlmodel import Session, select
 
-from .. import settings_store as st
+from .. import config, settings_store as st
 from ..db import get_session
 from ..models import RequestLog
 from ..router.cache import RedisBackend, _safe, cache
@@ -30,6 +30,7 @@ class SettingsIn(BaseModel):
     audit_retention_days: Optional[int] = None
     council_retention_days: Optional[int] = None
     mcp_retention_days: Optional[int] = None
+    password_hash_log_n: Optional[int] = None          # 14..16: scrypt cost for the UI-chosen admin password
 
 
 class TestIn(BaseModel):
@@ -50,6 +51,7 @@ def view() -> dict:
         "cache_default_ttl": s["cache_default_ttl"], "cache_max_entry_kb": s["cache_max_entry_kb"],
         "cache_fallback_memory": s["cache_fallback_memory"],
         **{k: s[k] for k in RETENTION_KEYS},
+        "password_hash_log_n": s["password_hash_log_n"], "password_source": config.PASSWORD_SOURCE,
     }
 
 
@@ -87,6 +89,8 @@ async def put_settings(body: SettingsIn):
     for k in RETENTION_KEYS:
         if k in vals and not (0 <= vals[k] <= 3650):
             raise HTTPException(400, "Retention must be between 0 (keep forever) and 3650 days")
+    if "password_hash_log_n" in vals and not (config.MIN_LOG_N <= vals["password_hash_log_n"] <= config.MAX_LOG_N):
+        raise HTTPException(400, f"The password hash cost must be between {config.MIN_LOG_N} and {config.MAX_LOG_N}")
     merged = {**st.get_all(), **vals}
     if merged["redis_enabled"] and not merged["redis_url"]:
         raise HTTPException(400, "Enter a Redis URL before enabling Redis")
