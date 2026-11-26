@@ -168,8 +168,12 @@ Gateways -> **Unified** tab exposes several gateways through one OpenAI-compatib
 You choose which gateways are exposed; the `model` a client sends is the **gateway name** (case-insensitive, the slug also works).
 A gateway with several public models is reachable as `Name` (its configurable default model) and as `Name/model`.
 
-Authentication: by default each gateway checks its own API key (open gateways need none). Create **unified API keys** in the same
-card to protect the whole endpoint: with at least one key, every call needs a key (anonymous access is closed, even to open gateways).
+The settings are split into tabs, like the gateway editor: *Endpoint* (enable, URL and the unified API keys), *Gateways*, *Models* (single
+upstream models exposed directly) and *Audio*, which only appears once a directly exposed model does text-to-speech or speech-to-text and holds
+its voices and audio defaults (same fields as in the gateway editor). One **Save** button at the top covers all tabs.
+
+Authentication: by default each gateway checks its own API key (open gateways need none). Create **unified API keys** on the *Endpoint* tab
+to protect the whole endpoint: with at least one key, every call needs a key (anonymous access is closed, even to open gateways).
 A unified key works for all exposed gateways without their own keys (it carries no per-key limits or quotas); a gateway's own key still
 works for that gateway only. Keys are stored hashed and the plaintext is shown once, at creation.
 `GET /unified/v1/models` lists only what the caller may use, so protected gateways are not revealed to anonymous callers.

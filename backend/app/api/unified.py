@@ -9,7 +9,7 @@ from .. import settings_store as st
 from .. import unified
 from ..db import session
 from ..models import Endpoint, Gateway, GatewayModel, Model
-from ..voices import clean_voices, voice_id
+from ..voices import clean_audio_defaults, clean_voices, voice_id
 
 router = APIRouter(prefix="/api")
 
@@ -30,6 +30,7 @@ class ModelSel(BaseModel):
     aliases: list[str] = []      # extra names for the same model
     disabled: bool = False       # kept in the list but not served
     voices: list[str] = []       # TTS: voices to offer via GET /audio/voices (empty = every voice the upstream reports)
+    audio_defaults: Optional[dict] = None   # speech / transcription defaults (see voices.clean_audio_defaults)
 
 
 class UnifiedIn(BaseModel):
@@ -58,7 +59,7 @@ def _direct_models(cfg: dict, aliases: list[dict]) -> list[dict]:
             if m:
                 out.append({"model_id": m.id, "name": e["name"], "aliases": e.get("aliases") or [], "disabled": bool(e.get("disabled")), "alias": names.get(e["name"]), "upstream_id": m.upstream_id, "endpoint": eps.get(m.endpoint_id, "?"),
                             "capabilities": m.capabilities or [], "enabled": bool(m.enabled),
-                            "voices": e.get("voices") or [], "voice_options": [v for v in (voice_id(x) for x in (m.voices or [])) if v]})
+                            "audio_defaults": e.get("audio_defaults"), "voices": e.get("voices") or [], "voice_options": [v for v in (voice_id(x) for x in (m.voices or [])) if v]})
     return out
 
 
@@ -168,8 +169,13 @@ def put_unified(body: UnifiedIn):
                 if name.lower() in names:
                     raise HTTPException(400, f"The name '{name}' is used twice")
                 names.add(name.lower())
-                entries.append({"model_id": m.id, "name": name, "aliases": _clean(sel.aliases), "disabled": bool(sel.disabled),
-                                "voices": clean_voices(sel.voices) if "tts" in (m.capabilities or []) else []})
+                voices = clean_voices(sel.voices) if "tts" in (m.capabilities or []) else []
+                try:   # audio defaults only make sense for a model that does audio
+                    audio_defaults = clean_audio_defaults(sel.audio_defaults, voices) if {"tts", "audio"} & set(m.capabilities or []) else None
+                except ValueError as e:
+                    raise HTTPException(400, f"'{name}': {e}")
+                entries.append({"model_id": m.id, "name": name, "aliases": _clean(sel.aliases), "disabled": bool(sel.disabled), "voices": voices,
+                                "audio_defaults": audio_defaults})
         vals["unified_models"] = entries
     if vals:
         _check_unique(vals)

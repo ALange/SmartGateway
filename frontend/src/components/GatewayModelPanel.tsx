@@ -5,6 +5,7 @@ import { CapChip, StatusDot } from "./ui";
 import GuardrailsEditor, { guardrailsActive } from "./GuardrailsEditor";
 import VoicePicker, { voiceName } from "./VoicePicker";
 import FallbackChain, { buildSteps } from "./FallbackChain";
+import AudioSettings, { hasAudioDefaults } from "./AudioSettings";
 
 type TabDef = [string, string];
 
@@ -20,9 +21,6 @@ export function visibleTabs(caps: Set<string>, members: number, audio: { tts: bo
   return t;
 }
 
-const SPEECH_FORMATS = ["mp3", "opus", "aac", "flac", "wav", "pcm"];
-const TRANSCRIPTION_FORMATS = ["json", "text", "srt", "verbose_json", "vtt"];
-const hasAudioDefaults = (a: any) => !!a && Object.values(a).some((sec: any) => sec && Object.values(sec).some((v) => v !== "" && v != null));
 
 function badge(k: string, m: any): { text: string; tone?: "warn" } | null {
   const n = m.members.length;
@@ -60,13 +58,6 @@ export default function GatewayModelPanel({ m, tab, onTab, gwStrategy, maxRetrie
   useEffect(() => { setFresh((f) => (f.includes(current) ? f.filter((k) => k !== current) : f)); }, [current]);
 
   const available = allModels.filter((um) => !used.has(um.id));
-  const ad = m.audio_defaults || {};
-  const setAudio = (sec: "speech" | "transcription", key: string, value: any) => {
-    const next: any = { ...ad, [sec]: { ...(ad[sec] || {}) } };
-    if (value === "" || value == null) delete next[sec][key]; else next[sec][key] = value;
-    if (!Object.keys(next[sec]).length) delete next[sec];
-    onChange({ audio_defaults: Object.keys(next).length ? next : null });
-  };
   const ttsIds: number[] = m.members.map((x: any) => x.model_id).filter((mid: number) => byId(mid)?.capabilities.includes("tts"));
   const discovered = [...new Set<string>(ttsIds.flatMap((mid: number) => (byId(mid)?.voices || []).map(voiceName)).filter(Boolean))];
   const chosen = String(m.voices_text || "").split(/[,\n]/).map((x: string) => x.trim()).filter(Boolean);
@@ -161,45 +152,9 @@ export default function GatewayModelPanel({ m, tab, onTab, gwStrategy, maxRetrie
         </>)}
 
         {current === "audio" && (
-          <div className="space-y-6">
-            <p className="text-xs text-[#787884]">Defaults are used only when a request leaves the setting out; a client's own value always wins.</p>
-            {audio.tts && (
-              <section>
-                <h4 className="mb-3 text-sm font-semibold">Text-to-speech</h4>
-              {caps.has("tts") && (() => {
-                const ttsIds: number[] = m.members.map((x: any) => x.model_id).filter((mid: number) => byId(mid)?.capabilities.includes("tts"));
-                const options = [...new Set<string>(ttsIds.flatMap((mid: number) => (byId(mid)?.voices || []).map(voiceName)).filter(Boolean))];
-                return <VoicePicker options={options} text={m.voices_text || ""} onChange={(t) => onChange({ voices_text: t })}
-                  onRefresh={() => voices.refresh(ttsIds)} busy={voices.busy} err={voices.err} />;
-              })()}
-                <div className="mt-4 grid gap-4 md:grid-cols-3">
-                  <div><label className="lbl">Default voice</label>
-                    {voiceChoices.length
-                      ? <select className="input" value={ad.speech?.voice || ""} onChange={(e) => setAudio("speech", "voice", e.target.value)} data-testid="audio-voice"><option value="">None: the client chooses</option>{voiceChoices.map((v) => <option key={v} value={v}>{v}</option>)}</select>
-                      : <input className="input mono" value={ad.speech?.voice || ""} placeholder="e.g. alloy" onChange={(e) => setAudio("speech", "voice", e.target.value)} data-testid="audio-voice" />}
-                    <p className="mt-1 text-xs text-[#787884]">{voiceChoices.length ? "From the voices above." : "No voice list yet: type a name."}</p></div>
-                  <div><label className="lbl">Default format</label>
-                    <select className="input" value={ad.speech?.response_format || ""} onChange={(e) => setAudio("speech", "response_format", e.target.value)} data-testid="audio-format"><option value="">Upstream default</option>{SPEECH_FORMATS.map((f) => <option key={f} value={f}>{f}</option>)}</select></div>
-                  <div><label className="lbl">Default speed</label>
-                    <input type="number" min={0.25} max={4} step={0.05} className="input" placeholder="1.0" value={ad.speech?.speed ?? ""} onChange={(e) => setAudio("speech", "speed", e.target.value === "" ? "" : +e.target.value)} data-testid="audio-speed" />
-                    <p className="mt-1 text-xs text-[#787884]">0.25 to 4</p></div>
-                </div>
-              </section>)}
-            {audio.stt && (
-              <section>
-                <h4 className="mb-3 text-sm font-semibold">Speech-to-text</h4>
-                <div className="grid gap-4 md:grid-cols-3">
-                  <div><label className="lbl">Default language</label>
-                    <input className="input mono" placeholder="auto-detect (e.g. en, pl)" value={ad.transcription?.language || ""} onChange={(e) => setAudio("transcription", "language", e.target.value)} data-testid="audio-language" />
-                    <p className="mt-1 text-xs text-[#787884]">Transcriptions only; translations are always into English.</p></div>
-                  <div><label className="lbl">Default format</label>
-                    <select className="input" value={ad.transcription?.response_format || ""} onChange={(e) => setAudio("transcription", "response_format", e.target.value)}><option value="">Upstream default</option>{TRANSCRIPTION_FORMATS.map((f) => <option key={f} value={f}>{f}</option>)}</select></div>
-                  <div><label className="lbl">Default temperature</label>
-                    <input type="number" min={0} max={1} step={0.1} className="input" placeholder="0" value={ad.transcription?.temperature ?? ""} onChange={(e) => setAudio("transcription", "temperature", e.target.value === "" ? "" : +e.target.value)} />
-                    <p className="mt-1 text-xs text-[#787884]">0 to 1</p></div>
-                </div>
-              </section>)}
-          </div>
+          <AudioSettings tts={audio.tts} stt={audio.stt} defaults={m.audio_defaults} onChange={(v) => onChange({ audio_defaults: v })} voiceChoices={voiceChoices}
+            voicePicker={<VoicePicker options={discovered} text={m.voices_text || ""} onChange={(t) => onChange({ voices_text: t })}
+              onRefresh={() => voices.refresh(ttsIds)} busy={voices.busy} err={voices.err} />} />
         )}
 
         {current === "cache" && (<>

@@ -128,3 +128,44 @@ def test_defaults_are_normalised_updated_and_cleared(client, up):
                                                               "members": [{"model_id": g["models"][0]["members"][0]["model_id"]}], "audio_defaults": {}}]}
     r = client.put(f"/api/gateways/{g['id']}", json=body)
     assert r.status_code == 200 and r.json()["models"][0]["audio_defaults"] is None
+
+
+# ------------------------------------------------------------------ models exposed directly on the unified endpoint
+def direct(client, caps, **sel):
+    mid = mk(caps)
+    name = f"direct-{time.time_ns()}"
+    r = client.put("/api/unified", json={"enabled": True, "gateways": [], "models": [{"model_id": mid, "name": name, **sel}]})
+    return mid, name, r
+
+
+def test_unified_direct_models_get_audio_defaults_too(client, up):
+    try:
+        mid, name, r = direct(client, ["tts"], voices=["af", "am"], audio_defaults=SPEECH)
+        assert r.status_code == 200, r.text
+        view = {m["name"]: m for m in r.json()["models"]}
+        assert view[name]["audio_defaults"] == SPEECH                                                     # shown back to the editor
+        assert client.post("/unified/v1/audio/speech", json={"model": name, "input": "hi"}).status_code == 200
+        assert json.loads(up.calls[-1][2]) == {"model": "u", "input": "hi", "voice": "af", "response_format": "wav", "speed": 1.25}
+        client.post("/unified/v1/audio/speech", json={"model": name, "input": "hi", "voice": "am"})        # the client's own value wins
+        assert json.loads(up.calls[-1][2])["voice"] == "am"
+        # editing: new defaults replace the old ones, an empty object clears them
+        mid2, name2, r2 = direct(client, ["audio"], audio_defaults={"transcription": {"language": "de"}})
+        assert r2.status_code == 200
+        client.post("/unified/v1/audio/transcriptions", data={"model": name2}, files={"file": ("a.wav", b"RIFFxxxx", "audio/wav")})
+        assert 'name="language"\r\n\r\nde' in up.calls[-1][2].decode("latin-1")
+        r3 = client.put("/api/unified", json={"enabled": True, "gateways": [], "models": [{"model_id": mid2, "name": name2, "audio_defaults": {}}]})
+        assert r3.json()["models"][0]["audio_defaults"] is None
+    finally:
+        client.put("/api/unified", json={"enabled": False, "gateways": [], "models": []})
+
+
+def test_unified_direct_audio_defaults_are_validated_and_only_kept_for_audio_models(client, up):
+    try:
+        _, name, r = direct(client, ["tts"], voices=["af"], audio_defaults={"speech": {"voice": "zz"}})
+        assert r.status_code == 400 and "not in this model's voice list" in r.json()["detail"] and name in r.json()["detail"]
+        _, _, r = direct(client, ["tts"], audio_defaults={"speech": {"speed": 9}})
+        assert r.status_code == 400 and "between 0.25 and 4" in r.json()["detail"]
+        _, name, r = direct(client, ["chat"], audio_defaults=SPEECH)                                       # a chat model has no audio settings: dropped
+        assert r.status_code == 200 and r.json()["models"][0]["audio_defaults"] is None
+    finally:
+        client.put("/api/unified", json={"enabled": False, "gateways": [], "models": []})
