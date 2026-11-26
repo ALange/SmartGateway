@@ -89,6 +89,12 @@ Combine upstream models behind one URL with your own public model names. Strateg
 fastest, random, **tiered** (by prompt complexity), plus fallback members and sticky sessions (`X-SG-Session` / `user`). Per model you can
 set a system prompt, default parameters, a max-tokens ceiling, caching and compression. Requests can steer routing with `X-SG-Require`.
 
+**Routing order & fallbacks:** in the gateway editor each public model shows its upstream models as a chain of steps: step 1 is tried
+first, and when none of its models can answer (down, busy, error, rate limit) the next step takes over. Models in the same step share the
+load. Drag models between steps (or use the arrows), switch "wait for the steps above" per fallback step, and use the power button to
+preview which model would serve if another failed (a preview only, nothing is saved). With "Priority with failover" the order is strict;
+other strategies only use it to break ties (the editor offers to switch).
+
 **Extra names (aliases):** a public model can have optional additional names. Clients may request any of them; the request is logged,
 cached and answered under the name used, and `/models` lists each one. Keys' allowed-model lists accept the canonical name or an alias.
 

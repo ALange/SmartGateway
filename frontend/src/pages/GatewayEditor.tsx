@@ -6,6 +6,7 @@ import { CapChip, PageHeader } from "../components/ui";
 import KeysPanel from "../components/KeysPanel";
 import GuardrailsEditor from "../components/GuardrailsEditor";
 import VoicePicker, { voiceName } from "../components/VoicePicker";
+import FallbackChain, { applySteps, buildSteps } from "../components/FallbackChain";
 
 const blankModel = () => ({ public_name: "", enabled: true, aliases_text: "", voices_text: "", strategy: "", sticky: false, system_prompt: "", max_tokens_cap: "", default_params: "", cache_enabled: false, cache_ttl: "", cache_any_temperature: false, cache_streaming: true, cache_per_key: false, cache_replay_speed: "instant", compress_mode: "", guardrails: null as any, members: [] as any[] });
 
@@ -27,10 +28,21 @@ export default function GatewayEditor() {
         default_params: m.default_params && Object.keys(m.default_params).length ? JSON.stringify(m.default_params, null, 2) : "" })) }));
   }, [id]);
 
-  const allModels = useMemo(() => eps.flatMap((e) => e.models.map((m: any) => ({ ...m, endpoint_name: e.name }))), [eps]);
+  const allModels = useMemo(() => eps.flatMap((e) => e.models.map((m: any) => ({ ...m, endpoint_name: e.name, endpoint_status: e.status }))), [eps]);
   const byId = (mid: number) => allModels.find((m) => m.id === mid);
   const setModel = (i: number, patch: any) => setF({ ...f, models: f.models.map((m: any, j: number) => (j === i ? { ...m, ...patch } : m)) });
   const setMember = (i: number, k: number, patch: any) => setModel(i, { members: f.models[i].members.map((x: any, j: number) => (j === k ? { ...x, ...patch } : x)) });
+
+  /** Add a model to step `step` of a gateway model's chain (or as a new last step); the chain keeps priorities and fallback flags consistent. */
+  const addMember = (i: number, modelId: number, step: number | "new") => {
+    const ms = f.models[i].members, idx = ms.length;
+    const members = [...ms, { model_id: modelId, weight: 1, priority: 0, is_fallback: false, enabled: true, tier: 2 }];
+    const steps = buildSteps(ms).map((s) => ({ ...s, idxs: [...s.idxs] }));
+    if (!steps.length) steps.push({ hold: false, idxs: [idx] });
+    else if (step === "new") steps.push({ hold: true, idxs: [idx] });
+    else steps[step].idxs.push(idx);
+    setModel(i, { members: applySteps(members, steps) });
+  };
 
   const refreshVoices = async (i: number, ttsIds: number[]) => {
     setVBusy((b) => ({ ...b, [i]: true })); setVErr((e) => ({ ...e, [i]: "" }));
@@ -102,33 +114,34 @@ export default function GatewayEditor() {
               })()}
               <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-[#8e8e9a]">Combined capabilities: {[...caps].map((c) => <CapChip key={c} cap={c} />)}{caps.size === 0 && "—"}</div>
 
-              <table className="mt-4 w-full text-sm">
-                <thead><tr className="text-left text-xs uppercase tracking-wider text-[#787884]"><th className="pb-2 font-medium">Upstream model</th><th className="pb-2 font-medium">Weight</th><th className="pb-2 font-medium">Priority</th>
-                  {strat === "tiered" && <th className="pb-2 font-medium">Tier</th>}<th className="pb-2 font-medium">Slot cap</th><th className="pb-2 font-medium" title="Used only when primaries are down or full for a few seconds">Fallback</th><th /></tr></thead>
-                <tbody>
-                  {m.members.map((x: any, k: number) => {
-                    const um = byId(x.model_id);
-                    return (
-                      <tr key={k} className="border-t border-white/5">
-                        <td className="py-2 pr-3"><div className="mono">{um?.upstream_id} <span className="text-[#787884]">@ {um?.endpoint_name}</span></div>
-                          <div className="mt-1 flex flex-wrap gap-1">{um?.capabilities.map((c: string) => <CapChip key={c} cap={c} />)}<span className="chip text-[#8e8e9a]">{um?.max_slots} slots</span>{um?.context_length && <span className="chip text-[#8e8e9a]">ctx {um.context_length}</span>}</div></td>
-                        <td className="py-2 pr-3"><input type="number" min={1} className="input !w-20 !py-1.5" value={x.weight} onChange={(e) => setMember(i, k, { weight: e.target.value })} /></td>
-                        <td className="py-2 pr-3"><input type="number" className="input !w-20 !py-1.5" value={x.priority} onChange={(e) => setMember(i, k, { priority: e.target.value })} /></td>
-                        {strat === "tiered" && <td className="py-2 pr-3"><select className="input !w-28 !py-1.5" value={x.tier ?? 2} onChange={(e) => setMember(i, k, { tier: +e.target.value })}><option value={1}>1 · small</option><option value={2}>2 · medium</option><option value={3}>3 · large</option></select></td>}
-                        <td className="py-2 pr-3"><input type="number" min={1} className="input !w-24 !py-1.5" placeholder="model" value={x.slots_override ?? ""} onChange={(e) => setMember(i, k, { slots_override: e.target.value })} /></td>
-                        <td className="py-2 pr-3"><input type="checkbox" checked={!!x.is_fallback} onChange={(e) => setMember(i, k, { is_fallback: e.target.checked })} /></td>
-                        <td className="py-2 text-right"><button className="btn danger !p-1.5" onClick={() => setModel(i, { members: m.members.filter((_: any, j: number) => j !== k) })}><Trash2 size={14} /></button></td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              <div className="mt-3">
-                <select className="input !w-auto" value="" onChange={(e) => e.target.value && setModel(i, { members: [...m.members, { model_id: +e.target.value, weight: 1, priority: 0, enabled: true, tier: 2 }] })}>
-                  <option value="">+ Add upstream model…</option>
-                  {allModels.filter((um) => !used.has(um.id)).map((um) => <option key={um.id} value={um.id}>{um.upstream_id} @ {um.endpoint_name} [{um.capabilities.join(", ")}]</option>)}
-                </select>
-              </div>
+              <FallbackChain members={m.members} byId={byId} strategy={strat} maxRetries={+f.max_retries || 0}
+                available={allModels.filter((um) => !used.has(um.id))}
+                onChange={(members) => setModel(i, { members })} onUseFailover={() => setModel(i, { strategy: "priority_failover" })}
+                onAdd={(mid, step) => addMember(i, mid, step)} />
+
+              {m.members.length > 0 && (
+                <details className="mt-3 text-sm">
+                  <summary className="cursor-pointer text-xs text-[#8e8e9a] hover:text-[#c8c8d0]">Advanced per-model settings (weight, slot cap{strat === "tiered" ? ", tier" : ""})</summary>
+                  <table className="mt-2 w-full text-sm">
+                    <thead><tr className="text-left text-xs uppercase tracking-wider text-[#787884]"><th className="pb-2 font-medium">Upstream model</th><th className="pb-2 font-medium" title="Share of traffic among models of the same step (weighted round-robin)">Weight</th>
+                      {strat === "tiered" && <th className="pb-2 font-medium">Tier</th>}<th className="pb-2 font-medium">Slot cap</th></tr></thead>
+                    <tbody>
+                      {m.members.map((x: any, k: number) => {
+                        const um = byId(x.model_id);
+                        return (
+                          <tr key={k} className="border-t border-white/5">
+                            <td className="py-2 pr-3"><div className="mono">{um?.upstream_id} <span className="text-[#787884]">@ {um?.endpoint_name}</span></div>
+                              <div className="mt-1 flex flex-wrap gap-1">{um?.capabilities.map((c: string) => <CapChip key={c} cap={c} />)}<span className="chip text-[#8e8e9a]">{um?.max_slots} slots</span>{um?.context_length && <span className="chip text-[#8e8e9a]">ctx {um.context_length}</span>}</div></td>
+                            <td className="py-2 pr-3"><input type="number" min={1} className="input !w-20 !py-1.5" value={x.weight} onChange={(e) => setMember(i, k, { weight: e.target.value })} /></td>
+                            {strat === "tiered" && <td className="py-2 pr-3"><select className="input !w-28 !py-1.5" value={x.tier ?? 2} onChange={(e) => setMember(i, k, { tier: +e.target.value })}><option value={1}>1 · small</option><option value={2}>2 · medium</option><option value={3}>3 · large</option></select></td>}
+                            <td className="py-2 pr-3"><input type="number" min={1} className="input !w-24 !py-1.5" placeholder="model" value={x.slots_override ?? ""} onChange={(e) => setMember(i, k, { slots_override: e.target.value })} /></td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </details>
+              )}
 
               <div className="mt-4 rounded-md border border-white/[0.08] p-3">
                 <label className="flex cursor-pointer items-center gap-3 text-sm font-medium"><input type="checkbox" checked={!!m.cache_enabled} onChange={(e) => setModel(i, { cache_enabled: e.target.checked })} /> Cache responses for this model
