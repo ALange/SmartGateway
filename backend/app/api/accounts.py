@@ -54,7 +54,7 @@ def _begin(provider: str, body: StartIn, s: Session, extra: dict) -> str:
 
 
 async def _complete(p: dict, tok: dict, ident: dict, s: Session) -> dict:
-    """Store a finished sign-in: update the endpoint of the same account, or create one (with its models, enabled)."""
+    """Store a finished sign-in: update the endpoint of the same account, or create one (its models are discovered but disabled)."""
     provider, kind = p["provider"], KIND[p["provider"]]
     ep_id = p["endpoint_id"] or tokens.find_endpoint_for(kind, ident["account_id"], ident["email"])
     if ep_id:   # the same account signing in again: replace its tokens, keep its endpoint, models and gateways
@@ -71,12 +71,7 @@ async def _complete(p: dict, tok: dict, ident: dict, s: Session) -> dict:
         tokens.save_tokens(ep.id, tok, kind)
         created = True
     try:
-        await endpoints_api.sync_models(ep, s, probe=False)
-        if created:   # the admin added this account on purpose: its models are usable at once
-            for m in s.exec(select(Model).where(Model.endpoint_id == ep.id)).all():
-                m.enabled = True
-                s.add(m)
-            s.commit()
+        await endpoints_api.sync_models(ep, s, probe=False)   # new models stay off until the admin enables them, as on any endpoint
     except Exception as e:  # noqa: BLE001
         if created:
             for m in s.exec(select(Model).where(Model.endpoint_id == ep.id)).all():

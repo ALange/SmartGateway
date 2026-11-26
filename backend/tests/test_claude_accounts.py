@@ -112,6 +112,7 @@ def sign_in(client, endpoint_id=None, code="the-code"):
 
 def make_gw(client, ep, model="claude-sonnet-5-5"):
     mid = next(m["id"] for m in ep["models"] if m["upstream_id"] == model)
+    assert client.patch(f"/api/models/{mid}", json={"enabled": True}).status_code == 200
     g = client.post("/api/gateways", json={"name": f"cl-{time.time_ns()}", "models": [{"public_name": "claude", "members": [{"model_id": mid}]}]})
     assert g.status_code == 200, g.text
     return g.json()
@@ -137,7 +138,7 @@ def test_pkce_sign_in_creates_an_account(client, v):
     assert ex["grant_type"] == "authorization_code" and ex["code"] == "the-code" and ex["state"] == q["state"][0]
     ep = done["endpoint"]
     assert done["created"] and ep["provider"] == "claude-oauth" and ep["account"]["email"] == "claude.user@example.com" and ep["account"]["kind"] == "claude"
-    assert {m["upstream_id"] for m in ep["models"]} >= {"claude-opus-5-5", "claude-sonnet-5-5"} and all(m["enabled"] for m in ep["models"])
+    assert {m["upstream_id"] for m in ep["models"]} >= {"claude-opus-5-5", "claude-sonnet-5-5"} and not any(m["enabled"] for m in ep["models"])   # new models stay off until enabled, as on any endpoint
     with db.session() as s:
         acc = s.get(OAuthAccount, ep["id"])
         access, refresh = acc.access_token, acc.refresh_token
@@ -147,6 +148,22 @@ def test_pkce_sign_in_creates_an_account(client, v):
         body = client.get(url).text
         assert "sk-ant-" not in body and access not in body and refresh not in body
     assert client.get("/api/accounts").json()[0]["provider"] == "claude-oauth"
+    cleanup(client, ep)
+
+
+def test_models_stay_off_until_enabled_and_the_choice_survives_rescan_and_sign_in(client, v):
+    _, done = sign_in(client)
+    ep = done["endpoint"]
+    mid = next(m["id"] for m in ep["models"] if m["upstream_id"] == "claude-sonnet-5-5")
+    g = client.post("/api/gateways", json={"name": f"off-{time.time_ns()}", "models": [{"public_name": "claude", "members": [{"model_id": mid}]}]}).json()
+    assert chat(client, g, messages=[{"role": "user", "content": "hi"}]).status_code in (400, 404, 502)   # a disabled model is not served
+    assert client.patch(f"/api/models/{mid}", json={"enabled": True}).status_code == 200
+    assert chat(client, g, messages=[{"role": "user", "content": "hi"}]).status_code == 200
+    on = {m["upstream_id"]: m["enabled"] for m in client.post(f"/api/endpoints/{ep['id']}/rescan").json()["models"]}
+    assert on["claude-sonnet-5-5"] is True and on["claude-opus-5-5"] is False
+    _, again = sign_in(client, endpoint_id=ep["id"])
+    on = {m["upstream_id"]: m["enabled"] for m in again["endpoint"]["models"]}
+    assert on["claude-sonnet-5-5"] is True and on["claude-opus-5-5"] is False
     cleanup(client, ep)
 
 

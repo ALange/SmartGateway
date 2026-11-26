@@ -3,7 +3,7 @@ import { ChevronRight, KeyRound, Loader2, Plus, RefreshCw, Trash2, Sparkles } fr
 import { ALL_CAPS, api } from "../api";
 import { useLive } from "../live";
 import { CapChip, Empty, Modal, PageHeader, StatusDot } from "../components/ui";
-import OAuthAccountDialog, { AccountKind } from "../components/OAuthAccountDialog";
+import OAuthAccountDialog, { AccountKind, OAuthAccountFlow } from "../components/OAuthAccountDialog";
 
 const TYPES: Record<string, { label: string; name: string; base_url: string; keyHint: string; notes: string[] }> = {
   generic: { label: "OpenAI-compatible", name: "", base_url: "", keyHint: "optional", notes: [] },
@@ -21,14 +21,21 @@ const TYPES: Record<string, { label: string; name: string; base_url: string; key
   },
 };
 
+/** Subscription accounts: no URL or key, they sign in instead (see components/OAuthAccountDialog). */
+const ACCOUNT_TYPES: Record<string, { label: string; kind: AccountKind }> = {
+  "codex-oauth": { label: "ChatGPT / Codex account", kind: "codex" },
+  "claude-oauth": { label: "Claude account", kind: "claude" },
+};
+
 function AddEndpoint({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const [kind, setKind] = useState("generic");
   const [f, setF] = useState({ name: "", base_url: "", api_key: "", probe: true });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
-  const t = TYPES[kind];
-  const hosted = kind !== "generic";
-  const pick = (k: string) => { setKind(k); setErr(""); setF((x) => ({ ...x, base_url: TYPES[k].base_url, name: !x.name || Object.values(TYPES).some((v) => v.name === x.name) ? TYPES[k].name : x.name })); };
+  const account = ACCOUNT_TYPES[kind];
+  const t = TYPES[kind] || TYPES.generic;
+  const hosted = kind !== "generic" && !account;
+  const pick = (k: string) => { setKind(k); setErr(""); if (ACCOUNT_TYPES[k]) return; setF((x) => ({ ...x, base_url: TYPES[k].base_url, name: !x.name || Object.values(TYPES).some((v) => v.name === x.name) ? TYPES[k].name : x.name })); };
   const submit = async () => {
     setBusy(true); setErr("");
     try { await api("/api/endpoints", { method: "POST", json: { ...f, api_key: f.api_key || null, probe: hosted ? false : f.probe, provider: hosted ? kind : null } }); onDone(); onClose(); }
@@ -39,8 +46,10 @@ function AddEndpoint({ onClose, onDone }: { onClose: () => void; onDone: () => v
     <Modal title="Add endpoint" onClose={onClose}>
       <div className="space-y-4">
         <div><label className="lbl">Type</label>
-          <div className="flex flex-wrap gap-2">{Object.entries(TYPES).map(([k, v]) => (
+          <div className="flex flex-wrap gap-2">{[...Object.entries(TYPES), ...Object.entries(ACCOUNT_TYPES)].map(([k, v]) => (
             <button key={k} type="button" className={`btn ${kind === k ? "primary" : ""}`} onClick={() => pick(k)}>{v.label}</button>))}</div></div>
+        {account && <OAuthAccountFlow key={account.kind} kind={account.kind} onClose={onClose} onDone={onDone} />}
+        {!account && <>
         <div><label className="lbl">Name</label><input className="input" placeholder="e.g. GPU box #1" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></div>
         <div><label className="lbl">Base URL</label><input className="input mono" placeholder="http://host:8000/v1" value={f.base_url} readOnly={hosted} onChange={(e) => setF({ ...f, base_url: e.target.value })} /></div>
         <div><label className="lbl">API key <span className="normal-case text-[#787884]">({t.keyHint})</span></label><input className="input mono" type="password" autoComplete="off" placeholder="sk-…" value={f.api_key} onChange={(e) => setF({ ...f, api_key: e.target.value })} /></div>
@@ -56,6 +65,7 @@ function AddEndpoint({ onClose, onDone }: { onClose: () => void; onDone: () => v
             {busy ? <><Loader2 size={16} className="animate-spin" /> {hosted ? "Reading catalog…" : "Discovering models…"}</> : <><Sparkles size={16} /> Add &amp; discover</>}
           </button>
         </div>
+        </>}
       </div>
     </Modal>
   );
@@ -64,7 +74,7 @@ function AddEndpoint({ onClose, onDone }: { onClose: () => void; onDone: () => v
 export default function Endpoints() {
   const [eps, setEps] = useState<any[]>([]);
   const [adding, setAdding] = useState(false);
-  const [account, setAccount] = useState<{ kind: AccountKind; endpointId?: number } | null>(null);   // ChatGPT / Codex or Claude sign-in dialog
+  const [account, setAccount] = useState<{ kind: AccountKind; endpointId: number } | null>(null);   // "Sign in again" for an existing account
   const [busy, setBusy] = useState<number | null>(null);
   const [open, setOpen] = useState<Set<number>>(new Set());   // collapsed by default; click an endpoint to see its models
   const toggle = (id: number) => setOpen((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -79,7 +89,7 @@ export default function Endpoints() {
   return (
     <div className="fadein">
       <PageHeader title="Endpoints" sub="Upstream OpenAI-compatible servers and the models they offer."
-        actions={<div className="flex gap-2"><button className="btn" onClick={() => setAccount({ kind: "codex" })}><KeyRound size={16} /> Add ChatGPT / Codex account</button><button className="btn" onClick={() => setAccount({ kind: "claude" })}><KeyRound size={16} /> Add Claude account</button><button className="btn primary" onClick={() => setAdding(true)}><Plus size={16} /> Add endpoint</button></div>} />
+        actions={<button className="btn primary" onClick={() => setAdding(true)}><Plus size={16} /> Add endpoint</button>} />
       {eps.length === 0 && <Empty>No endpoints yet. Add one to discover its models and capabilities.</Empty>}
       <div className="space-y-5">
         {eps.map((ep) => {

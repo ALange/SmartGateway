@@ -122,8 +122,14 @@ def sign_in(client, name=None, endpoint_id=None):
     raise AssertionError("never finished")
 
 
+def enable(client, ep, upstream_id):
+    mid = next(m["id"] for m in ep["models"] if m["upstream_id"] == upstream_id)
+    assert client.patch(f"/api/models/{mid}", json={"enabled": True}).status_code == 200
+    return mid
+
+
 def make_gw(client, ep):
-    mid = next(m["id"] for m in ep["models"] if m["upstream_id"] == "gpt-5.5")
+    mid = enable(client, ep, "gpt-5.5")
     g = client.post("/api/gateways", json={"name": f"cx-{time.time_ns()}", "models": [{"public_name": "codex", "members": [{"model_id": mid}]}]})
     assert g.status_code == 200, g.text
     return g.json()
@@ -145,7 +151,7 @@ def test_sign_in_creates_a_usable_account(client, v):
     ep = done["endpoint"]
     assert done["created"] and ep["provider"] == "codex-oauth" and ep["account"]["email"] == "me@example.com" and ep["account"]["plan"] == "plus"
     assert ep["account"]["needs_login"] is False and ep["api_key"] is False
-    assert {m["upstream_id"] for m in ep["models"]} >= {"gpt-5.5", "gpt-5.4"} and all(m["enabled"] for m in ep["models"])
+    assert {m["upstream_id"] for m in ep["models"]} >= {"gpt-5.5", "gpt-5.4"} and not any(m["enabled"] for m in ep["models"])   # new models stay off until enabled, as on any endpoint
     # no token anywhere an admin (or a log reader) can see
     with db.session() as s:
         acc = s.get(OAuthAccount, ep["id"])
@@ -156,6 +162,24 @@ def test_sign_in_creates_a_usable_account(client, v):
         body = client.get(url).text
         assert access not in body and refresh not in body and "refresh-" not in body
     assert client.get("/api/accounts").json()[0]["email"] == "me@example.com"
+    cleanup(client, ep)
+
+
+def test_models_stay_off_until_enabled_and_the_choice_survives_rescan_and_sign_in(client, v):
+    _, done = sign_in(client)
+    ep = done["endpoint"]
+    mid = next(m["id"] for m in ep["models"] if m["upstream_id"] == "gpt-5.5")
+    g = client.post("/api/gateways", json={"name": f"off-{time.time_ns()}", "models": [{"public_name": "codex", "members": [{"model_id": mid}]}]}).json()
+    assert chat(client, g, messages=[{"role": "user", "content": "hi"}]).status_code in (400, 404, 502)   # a disabled model is not served
+    enable(client, ep, "gpt-5.5")
+    assert chat(client, g, messages=[{"role": "user", "content": "hi"}]).status_code == 200
+    re = client.post(f"/api/endpoints/{ep['id']}/rescan").json()
+    on = {m["upstream_id"]: m["enabled"] for m in re["models"]}
+    assert on["gpt-5.5"] is True and on["gpt-5.4"] is False
+    v.polls_before_ok = 0
+    _, again = sign_in(client, endpoint_id=ep["id"])
+    on = {m["upstream_id"]: m["enabled"] for m in again["endpoint"]["models"]}
+    assert on["gpt-5.5"] is True and on["gpt-5.4"] is False
     cleanup(client, ep)
 
 
@@ -280,8 +304,7 @@ def test_a_rate_limited_account_fails_over_to_the_next(client, v):
     _, a = sign_in(client)
     v.next_login, v.polls_before_ok = dict(email="b@example.com", acct="acct-b"), 0
     _, b = sign_in(client)
-    ma = next(m["id"] for m in a["endpoint"]["models"] if m["upstream_id"] == "gpt-5.5")
-    mb = next(m["id"] for m in b["endpoint"]["models"] if m["upstream_id"] == "gpt-5.5")
+    ma, mb = enable(client, a["endpoint"], "gpt-5.5"), enable(client, b["endpoint"], "gpt-5.5")
     g = client.post("/api/gateways", json={"name": f"pool-{time.time_ns()}", "strategy": "priority_failover",
                                            "models": [{"public_name": "codex", "members": [{"model_id": ma, "priority": 0}, {"model_id": mb, "priority": 1}]}]}).json()
     v.backend = [(429, {"detail": "usage limit"}), (200, TEXT)]

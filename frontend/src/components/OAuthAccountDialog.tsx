@@ -19,8 +19,9 @@ const NOTICE: Record<AccountKind, { title: string; warn: string; how: string }> 
   },
 };
 
-/** Sign in with a subscription account. ChatGPT: show a code and wait until it is approved. Claude: open a link, paste the code it shows. */
-export default function OAuthAccountDialog({ kind, endpointId, onClose, onDone }: { kind: AccountKind; endpointId?: number; onClose: () => void; onDone: () => void }) {
+/** Sign in with a subscription account. ChatGPT: show a code and wait until it is approved. Claude: open a link, paste the code it shows.
+ *  The content only (no frame), so it can sit inside the Add endpoint dialog; OAuthAccountDialog wraps it for "Sign in again". */
+export function OAuthAccountFlow({ kind, endpointId, onClose, onDone }: { kind: AccountKind; endpointId?: number; onClose: () => void; onDone: () => void }) {
   const n = NOTICE[kind];
   const [step, setStep] = useState<"notice" | "code" | "done">("notice");
   const [start, setStart] = useState<Start | null>(null);
@@ -65,7 +66,6 @@ export default function OAuthAccountDialog({ kind, endpointId, onClose, onDone }
   };
 
   return (
-    <Modal title={endpointId ? `Sign in again · ${n.title}` : `Add ${n.title}`} onClose={onClose}>
       <div className="space-y-4">
         {step === "notice" && <>
           <div className="flex gap-3 rounded-md border border-amber-400/30 bg-amber-400/10 p-3 text-sm text-amber-200">
@@ -98,6 +98,13 @@ export default function OAuthAccountDialog({ kind, endpointId, onClose, onDone }
           {step === "code" && kind === "claude" && <button className="btn primary" disabled={busy || !pasted.trim()} onClick={submitCode}>{busy ? <><Loader2 size={16} className="animate-spin" /> Checking…</> : "Finish sign-in"}</button>}
         </div>
       </div>
+  );
+}
+
+export default function OAuthAccountDialog({ kind, endpointId, onClose, onDone }: { kind: AccountKind; endpointId?: number; onClose: () => void; onDone: () => void }) {
+  return (
+    <Modal title={`Sign in again · ${NOTICE[kind].title}`} onClose={onClose}>
+      <OAuthAccountFlow kind={kind} endpointId={endpointId} onClose={onClose} onDone={onDone} />
     </Modal>
   );
 }
