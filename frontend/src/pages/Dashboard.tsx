@@ -69,8 +69,6 @@ export default function Dashboard() {
           sub={comp && comp.totals.potentialTokensNotSent ? `${fmt(comp.totals.potentialTokensNotSent)} more in shadow mode` : "prompt tokens not sent"} />
       </div>
 
-      <div className="mt-5 empty:hidden"><PlanLimitsPanel /></div>
-
       <div className="mt-5 grid gap-5 xl:grid-cols-[1fr_1fr_1.4fr]">
         <div className="card card-pad">
           <h3 className="text-base font-semibold">Traffic by endpoint</h3>
@@ -121,6 +119,8 @@ export default function Dashboard() {
         <div className="mt-5 grid gap-5 xl:grid-cols-[1fr_2fr]"><CachePanel perf={perf} /><PerformancePanel perf={perf} /></div>
         <div className="mt-5 grid gap-5 xl:grid-cols-2"><SpeedChart perf={perf} /><ModelSpeedTable perf={perf} /></div>
       </>)}
+
+      <div className="mt-5 empty:hidden"><PlanLimitsPanel /></div>
 
       {mcp && (mcp.totals.endpoints > 0 || mcp.totals.calls > 0) && <McpPanel d={mcp} />}
 
