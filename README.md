@@ -60,11 +60,14 @@ Anthropic and Responses requests are translated onto the same routing pipeline, 
 Upstreams are OpenAI-compatible; limits of the translation (for example `web_search` tools and `previous_response_id`) are listed under
 [Compatibility notes](#compatibility-notes).
 
-## ChatGPT / Codex accounts
+## Subscription accounts (ChatGPT / Codex, Claude)
 
-**Endpoints -> Add ChatGPT / Codex account** signs in with a ChatGPT subscription the way the Codex CLI does (a short code you approve at OpenAI in your browser; nothing to install, so it works in Docker). The account becomes a normal endpoint: its models appear in the gateway editor and every gateway strategy applies, so several accounts can be pooled with failover when one hits its plan limit (HTTP 429). Clients keep using the OpenAI, Anthropic or Responses API; the gateway translates to the Codex backend. Access tokens are refreshed automatically; if OpenAI revokes a login the endpoint shows "needs sign-in" and **Sign in again** restores it in place (models and gateways are kept). Tokens are stored encrypted in the data volume and never shown in the UI, logs or API.
+**Endpoints -> Add ChatGPT / Codex account** and **Add Claude account** sign in with a subscription instead of an API key. Each account becomes a normal endpoint: its models appear in the gateway editor and every gateway strategy applies, so several accounts can be pooled with failover when one hits its plan limit (HTTP 429). Clients keep using the OpenAI, Anthropic or Responses API; the gateway translates to the vendor's own API. Access tokens are refreshed automatically; if a login is revoked the endpoint shows "needs sign-in" and **Sign in again** restores it in place (models and gateways are kept). Tokens are stored encrypted in the data volume and never shown in the UI, logs or API. Only chat completions are served (no embeddings, audio or images).
 
-Please note: this reuses the official Codex CLI's sign-in, which OpenAI does not offer as a public API. Use it for your own work, expect that it can change or stop working, and that your plan's own usage limits apply. Only chat completions are served (no embeddings, audio or images).
+- **ChatGPT / Codex:** the Codex CLI's device-code sign-in: you get a short code and approve it at OpenAI in your browser; nothing to install, so it works in Docker.
+- **Claude:** you open a link, log in at claude.ai and paste the code the page shows back into the dialog (PKCE, no redirect to this server).
+
+Please note: both reuse the official CLIs' sign-in, which neither vendor offers as a public API. Use them for your own work and expect that they can change or stop working. **Anthropic's terms do not allow Claude subscription logins in third-party tools**, so using a Claude account here can get requests refused or the account restricted. Anthropic may only accept subscription tokens for requests that present themselves as Claude Code; the gateway does not do that unless you set `SG_CLAUDE_CODE_IDENTITY=1`, which adds Claude Code's identity line to the system prompt and is against Anthropic's terms. The sign-in endpoints and client ids can be overridden with `SG_CODEX_*` / `SG_CLAUDE_*` environment variables if a vendor changes them.
 
 ## Configuration
 

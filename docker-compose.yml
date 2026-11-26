@@ -6,6 +6,7 @@ services:
     environment:
       SG_ADMIN_PASSWORD: "${SG_ADMIN_PASSWORD:-}"   # login for the UI + management API; if empty, a new install shows a setup wizard (code in `docker compose logs`); an existing one keeps its password. Without the wizard a random password is generated and printed once in `docker compose logs` (later starts only mention /data/admin_password)
       SG_ADMIN_USER: "${SG_ADMIN_USER:-admin}"
+      SG_CLAUDE_CODE_IDENTITY: "${SG_CLAUDE_CODE_IDENTITY:-}"   # advanced, against Anthropic's terms: present Claude account requests as Claude Code (see README)
       SG_SECRET_KEY: "${SG_SECRET_KEY:-}"            # encrypts upstream API keys; default: auto-generated /data/secret.key
       SG_CORS_ORIGINS: "${SG_CORS_ORIGINS:-}"        # e.g. https://app.example.com (or *) for browser clients of /gw and /v1
       SG_REDIS_URL: "${SG_REDIS_URL:-}"              # optional: preconfigure the Redis response cache (can also be set in Settings)

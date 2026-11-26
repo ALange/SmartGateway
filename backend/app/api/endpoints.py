@@ -39,8 +39,8 @@ def ep_out(ep: Endpoint, s: Session) -> dict:
     d["api_key"] = bool(ep.api_key)
     d["key_unreadable"] = crypto.is_unreadable(ep.api_key)
     if accounts.is_oauth(ep.provider):   # a subscription account: who it is and whether it needs a new sign-in (never the tokens)
-        from ..accounts import codex_auth
-        d["account"] = codex_auth.account_info(ep.id)
+        from ..accounts import tokens
+        d["account"] = tokens.account_info(ep.id)
     d["models"] = [m.model_dump() for m in models]
     return d
 
@@ -64,7 +64,7 @@ async def sync_models(ep: Endpoint, s: Session, probe: bool, free_out: Optional[
     _need_readable_key(ep)
     if accounts.is_oauth(ep.provider):
         from ..accounts import catalog
-        found = await catalog.discover(ep.id)
+        found = await catalog.discover(ep.id, ep.provider)
     else:
         ep.provider = ep.provider or discovery.detect_provider(ep.base_url)
         found = await discovery.discover(ep.base_url, ep.api_key, probe and not ep.provider, ep.provider)

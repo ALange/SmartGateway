@@ -316,7 +316,7 @@ class AdminSession(SQLModel, table=True):
 
 
 class OAuthAccount(SQLModel, table=True):
-    """A subscription account (ChatGPT/Codex) behind one Endpoint. The tokens are encrypted and never leave the server."""
+    """A subscription account (ChatGPT/Codex or Claude) behind one Endpoint. The tokens are encrypted and never leave the server."""
     endpoint_id: int = Field(foreign_key="endpoint.id", primary_key=True)
     kind: str = "codex"
     access_token: Optional[str] = Field(default=None, sa_column=Column(EncryptedString))

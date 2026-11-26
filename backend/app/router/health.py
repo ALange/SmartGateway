@@ -13,9 +13,9 @@ status: dict[int, str] = {}  # endpoint_id -> online | offline | unknown
 
 
 async def _account_ok(ep_id: int):
-    from ..accounts import codex_auth
+    from ..accounts import tokens
     try:
-        await codex_auth.fresh_access(ep_id)
+        await tokens.fresh_access(ep_id)
         return True, None
     except accounts.AccountError as e:
         return False, str(e)[:200]

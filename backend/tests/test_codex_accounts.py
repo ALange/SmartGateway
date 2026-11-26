@@ -11,7 +11,7 @@ from sqlalchemy import text
 from sqlmodel import Session, delete
 
 from app import db, proxy
-from app.accounts import codex_auth
+from app.accounts import tokens
 from app.main import app
 from app.models import Endpoint, OAuthAccount, RequestLog
 from app.router import health
@@ -97,7 +97,7 @@ def v(monkeypatch):
     vendor = Vendor()
     vendor.backend = [(200, TEXT)]
     monkeypatch.setattr(proxy, "client", httpx.AsyncClient(transport=httpx.MockTransport(vendor.handler)))
-    codex_auth._locks.clear()
+    tokens._locks.clear()
     return vendor
 
 
@@ -222,7 +222,7 @@ def test_expired_token_is_refreshed_once_and_the_refresh_token_rotates(client, v
         s.add(acc); s.commit()
 
     async def three():
-        return await asyncio.gather(*(codex_auth.fresh_access(ep["id"]) for _ in range(3)))
+        return await asyncio.gather(*(tokens.fresh_access(ep["id"]) for _ in range(3)))
     got = asyncio.run(three())
     assert v.refreshes == 1 and len({t for t, _ in got}) == 1                  # one refresh serves all three callers
     with db.session() as s:

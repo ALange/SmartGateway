@@ -1,10 +1,11 @@
-"""Subscription accounts (OAuth) as upstreams: one account = one Endpoint with provider "codex-oauth".
+"""Subscription accounts (OAuth) as upstreams: one account = one Endpoint with provider "codex-oauth" (ChatGPT) or "claude-oauth" (Claude).
 
 The rest of the gateway keeps speaking OpenAI chat/completions; this package signs in, keeps the tokens fresh and translates to and from the
 vendor's own API at the last moment (see upstream.py)."""
 
-OAUTH_PROVIDERS = {"codex-oauth"}
-LABELS = {"codex-oauth": "ChatGPT / Codex"}
+OAUTH_PROVIDERS = {"codex-oauth", "claude-oauth"}
+LABELS = {"codex-oauth": "ChatGPT / Codex", "claude-oauth": "Claude"}
+KIND = {"codex-oauth": "codex", "claude-oauth": "claude"}
 
 
 class AccountError(Exception):

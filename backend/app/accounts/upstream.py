@@ -2,9 +2,26 @@
 import json
 
 from ..router import health
-from . import AccountError, codex_adapter, codex_auth
+from . import AccountError, claude_adapter, claude_auth, codex_adapter, codex_auth, tokens
+from .adapted import AdaptedResponse
 
-USER_AGENT = "codex_cli_rs/0.99.0 (SmartGateway)"
+CODEX_UA = "codex_cli_rs/0.99.0 (SmartGateway)"
+
+
+def _codex(token: str, account_id, fwd: dict):
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json", "Accept": "text/event-stream", "originator": "codex_cli_rs", "User-Agent": CODEX_UA}
+    if account_id:
+        headers["ChatGPT-Account-Id"] = account_id
+    return f"{codex_auth.CODEX_BASE}/responses", headers, json.dumps(codex_adapter.request(fwd)), codex_adapter.chunks
+
+
+def _claude(token: str, account_id, fwd: dict):
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json", "Accept": "text/event-stream", "anthropic-version": "2023-06-01",
+               "anthropic-beta": "oauth-2025-04-20"}
+    return f"{claude_auth.API_BASE}/v1/messages", headers, json.dumps(claude_adapter.request(fwd)), claude_adapter.chunks
+
+
+BUILDERS = {"codex-oauth": _codex, "claude-oauth": _claude}
 
 
 async def send(client, c, route: str, fwd: dict, form_files=None):
@@ -12,22 +29,18 @@ async def send(client, c, route: str, fwd: dict, form_files=None):
     if route != "chat/completions" or form_files is not None:
         raise AccountError(f"This account only serves chat completions (not {route})")
     stream = bool(fwd.get("stream"))
-    body = json.dumps(codex_adapter.request(fwd))
     resp = None
     for attempt in (0, 1):
         try:
-            token, account_id = await codex_auth.fresh_access(c.endpoint_id, force=bool(attempt))
+            token, account_id = await tokens.fresh_access(c.endpoint_id, force=bool(attempt))
         except AccountError as e:
             if e.needs_login:
                 health.status[c.endpoint_id] = "offline"
             raise
-        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json", "Accept": "text/event-stream",
-                   "originator": "codex_cli_rs", "User-Agent": USER_AGENT}
-        if account_id:
-            headers["ChatGPT-Account-Id"] = account_id
-        resp = await client.send(client.build_request("POST", f"{codex_auth.CODEX_BASE}/responses", content=body, headers=headers), stream=True)
+        url, headers, body, chunker = BUILDERS[c.provider](token, account_id, fwd)
+        resp = await client.send(client.build_request("POST", url, content=body, headers=headers), stream=True)
         if resp.status_code == 401 and attempt == 0:   # the token was revoked or rotated elsewhere: refresh once and retry
             await resp.aclose()
             continue
         break
-    return await codex_adapter.AdaptedResponse(resp, str(fwd.get("model") or ""), stream).prepare()
+    return await AdaptedResponse(resp, str(fwd.get("model") or ""), stream, chunker).prepare()
