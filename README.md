@@ -138,8 +138,9 @@ Typical use: a "research council" of three different providers with a strong cha
 It costs several model calls per question, so use it where quality matters more than latency.
 
 ### MCP Servers and MCP Gateways
-**MCP Servers** connects remote MCP servers (Streamable HTTP, with legacy SSE fallback). Headers such as `Authorization` are stored
-encrypted, and discovery, health checks and re-scans run automatically. **MCP Gateways** combines endpoints into one server at
+**MCP Servers** connects remote MCP servers (Streamable HTTP, with legacy SSE fallback). An optional **Authorization** field takes just the API
+token (sent as `Authorization: Bearer <token>`; paste a full value such as `Basic …` to use another scheme), and other request headers can be
+added; all of them are stored encrypted, never shown again, and used by **Test connection** while editing. Discovery, health checks and re-scans run automatically. **MCP Gateways** combines endpoints into one server at
 `/mcp/<slug>`:
 
 - tools and prompts are namespaced `prefix__name`, resources `mcp://prefix/<original uri>`, so servers never collide;

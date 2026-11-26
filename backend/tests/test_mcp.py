@@ -155,6 +155,11 @@ def test_endpoint_crud_headers_hidden_and_discovery(client, servers):
     assert servers["alpha.test"].requests[-1][1]["authorization"] == "Bearer secret-token"
     assert client.post("/api/mcp-endpoints", json={"name": "bad", "url": "ftp://x"}).status_code == 400
     assert client.post("/api/mcp-endpoints/test", json={"name": "t", "url": "http://alpha.test/mcp"}).json()["counts"]["tool"] == 2
+    # testing while editing: the saved value of an empty header is used, an empty value with nothing saved is not sent at all
+    r = client.post("/api/mcp-endpoints/test", json={"name": "t", "url": "http://alpha.test/mcp", "endpoint_id": ep["id"], "headers": {"Authorization": "", "X-New": ""}})
+    assert r.json()["ok"] and servers["alpha.test"].requests[-1][1]["authorization"] == "Bearer secret-token" and "x-new" not in servers["alpha.test"].requests[-1][1]
+    client.post("/api/mcp-endpoints/test", json={"name": "t", "url": "http://alpha.test/mcp", "headers": {"Authorization": ""}})
+    assert "authorization" not in servers["alpha.test"].requests[-1][1]
     assert client.delete(f"/api/mcp-endpoints/{ep['id']}").status_code == 200
 
 
