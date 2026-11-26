@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import func
 from sqlmodel import Session, select
 
-from .. import settings_store as st
+from .. import config, settings_store as st
 from ..db import get_session
 from ..models import RequestLog
 from ..router.cache import RedisBackend, _safe, cache
@@ -32,6 +32,7 @@ class SettingsIn(BaseModel):
     council_retention_days: Optional[int] = None
     mcp_retention_days: Optional[int] = None
     ip_rpm: Optional[int] = None                       # requests/minute per client IP on public gateway URLs; 0 = off, -1 = back to SG_IP_RPM
+    password_hash_log_n: Optional[int] = None          # 14..16: scrypt cost for the UI-chosen admin password
 
 
 class TestIn(BaseModel):
@@ -53,6 +54,7 @@ def view() -> dict:
         "cache_fallback_memory": s["cache_fallback_memory"],
         **{k: s[k] for k in RETENTION_KEYS},
         "ip_rpm": s["ip_rpm"], "ip_rpm_env": int(os.environ.get("SG_IP_RPM", "0") or 0),
+        "password_hash_log_n": s["password_hash_log_n"], "password_source": config.PASSWORD_SOURCE,
     }
 
 
@@ -95,6 +97,8 @@ async def put_settings(body: SettingsIn):
             raise HTTPException(400, "The per-IP limit must be 0 (off) or a number of requests per minute; -1 returns to SG_IP_RPM")
         if vals["ip_rpm"] == -1:
             vals["ip_rpm"] = None
+    if "password_hash_log_n" in vals and not (config.MIN_LOG_N <= vals["password_hash_log_n"] <= config.MAX_LOG_N):
+        raise HTTPException(400, f"The password hash cost must be between {config.MIN_LOG_N} and {config.MAX_LOG_N}")
     merged = {**st.get_all(), **vals}
     if merged["redis_enabled"] and not merged["redis_url"]:
         raise HTTPException(400, "Enter a Redis URL before enabling Redis")
