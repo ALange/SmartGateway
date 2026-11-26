@@ -120,6 +120,14 @@ def revoke_session(token: str | None = None, everyone: bool = False) -> bool:
         return False
 
 
+def admin_user() -> str:
+    return os.environ.get("SG_ADMIN_USER", "admin")
+
+
+def _user_ok(candidate: str) -> bool:
+    return secrets.compare_digest(candidate.encode(), admin_user().encode())
+
+
 def request_authed(headers, cookies) -> bool:
     if not config.ADMIN_PASSWORD:
         return True
@@ -130,7 +138,8 @@ def request_authed(headers, cookies) -> bool:
         if h.lower().startswith("bearer "):
             return config.verify_password(h[7:])
         if h.lower().startswith("basic "):
-            return config.verify_password(base64.b64decode(h[6:]).decode().split(":", 1)[1])
+            user, _, pw = base64.b64decode(h[6:]).decode().partition(":")   # the user name counts, as it does on the login form
+            return _user_ok(user) and config.verify_password(pw)
     except Exception:  # noqa: BLE001
         return False
     return False
@@ -232,7 +241,7 @@ async def guard(request: Request, call_next):
 
 
 def admin_actor() -> str:
-    return os.environ.get("SG_ADMIN_USER", "admin") if config.ADMIN_PASSWORD else "open-access"
+    return admin_user() if config.ADMIN_PASSWORD else "open-access"
 
 
 class LoginIn(BaseModel):
@@ -282,7 +291,7 @@ def login(body: LoginIn, request: Request):
         return JSONResponse({"detail": "Too many failed attempts, try again in a few minutes"}, status_code=429)
     ok = (not config.ADMIN_PASSWORD) or (
         config.verify_password(body.password)
-        and secrets.compare_digest(body.username, os.environ.get("SG_ADMIN_USER", "admin")))
+        and _user_ok(body.username))
     if not ok:
         _fail(ip)
         audit.record(body.username[:60], ip, "login failed", "session", status=401, method="POST", path="/api/login")
