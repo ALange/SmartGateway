@@ -55,6 +55,9 @@ async def lifespan(app: FastAPI):
     await cache.reconfigure(settings_store.get_all())
     tasks = [asyncio.create_task(health.loop()), asyncio.create_task(health.slot_sync_loop()),
              asyncio.create_task(scheduler.run_ticker()), asyncio.create_task(retention.loop()), asyncio.create_task(mcp_registry.loop())]
+    from .accounts import limits as plan_limits
+    if plan_limits.POLL:   # keep the plan-limit numbers of subscription accounts fresh for the Dashboard and the Endpoints page
+        tasks.append(asyncio.create_task(plan_limits.loop()))
     yield
     for t in tasks:
         t.cancel()
@@ -381,6 +384,7 @@ app.add_middleware(BodyLimit)   # added after the guard middleware, so it is the
 app.include_router(endpoints.router)
 app.include_router(accounts_api.router)
 app.include_router(cost_api.router)
+app.include_router(cost_api.limits_router)
 app.include_router(gateways.router)
 app.include_router(stats.router)
 app.include_router(maintenance_api.router)

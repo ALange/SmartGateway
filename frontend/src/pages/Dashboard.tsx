@@ -6,6 +6,7 @@ import { api, PALETTE } from "../api";
 import { useLive } from "../live";
 import { fmt, ms, PageHeader, Stat, StatusDot } from "../components/ui";
 import McpPanel from "../components/McpPanel";
+import { PlanLimitsPanel } from "../components/PlanLimits";
 import { CachePanel, ModelSpeedTable, PerformancePanel, SpeedChart } from "../components/PerfPanels";
 
 const RANGES: [string, number][] = [["15 min", 15], ["1 hour", 60], ["6 hours", 360], ["24 hours", 1440]];
@@ -67,6 +68,8 @@ export default function Dashboard() {
         <Stat icon={Minimize2} label="Saved by compression" value={comp ? fmt(comp.totals.tokensNotSent) : "–"} unit="tok" tone="ok"
           sub={comp && comp.totals.potentialTokensNotSent ? `${fmt(comp.totals.potentialTokensNotSent)} more in shadow mode` : "prompt tokens not sent"} />
       </div>
+
+      <div className="mt-5 empty:hidden"><PlanLimitsPanel /></div>
 
       <div className="mt-5 grid gap-5 xl:grid-cols-[1fr_1fr_1.4fr]">
         <div className="card card-pad">

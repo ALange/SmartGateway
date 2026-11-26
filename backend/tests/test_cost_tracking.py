@@ -284,3 +284,116 @@ def test_cached_prompt_tokens_are_recorded_for_plain_and_streamed_requests(clien
     assert got == [(1000, 20, 640), (1000, 20, 640)]
     # 2 requests x (360 fresh x 1.0 + 640 cached x 1.0 (no cache price: input price) + 20 x 2.0) / 1e6
     assert rows(client, 1)[1][name]["cost"] == pytest.approx(2 * (1000 * 1.0 + 20 * 2.0) / 1e6)
+
+
+# ------------------------------------------------------------------ the background check and the cache-only views
+import asyncio
+import logging
+
+
+@pytest.fixture
+def watched(vendors):
+    with Session(db.engine) as s:   # only this test's accounts are checked: drop plan endpoints that earlier tests left behind
+        for e in s.exec(select(Endpoint).where(Endpoint.provider.in_(list(plan_limits.PLANNED)))).all():
+            a = s.get(OAuthAccount, e.id)
+            if a:
+                s.delete(a)
+            s.delete(e)
+        s.commit()
+    plan_limits._cache.clear()
+    plan_limits._failures.clear()
+    plan_limits._not_before.clear()
+    yield vendors
+    plan_limits._failures.clear()
+    plan_limits._not_before.clear()
+
+
+def usage_calls(v):
+    return len([c for c in v.calls if c[1].endswith("/usage")])
+
+
+def accounts_view(client):
+    return {a["name"]: a for a in client.get("/api/limits").json()["accounts"]}
+
+
+def test_background_check_fills_the_cache_and_the_views_never_call_a_vendor(client, watched, caplog):
+    cl, cl_n = account_ep("claude-bg", "claude-oauth", "claude")
+    cx, cx_n = account_ep("codex-bg", "codex-oauth", "codex")
+    go, go_n, _ = mk_ep("go-bg", "opencode-go", CATALOG)
+    with Session(db.engine) as s:
+        e = s.get(Endpoint, go); e.api_key = "oc-secret-key"; s.add(e); s.commit()
+    assert accounts_view(client)[cl_n]["windows"] == [] and accounts_view(client)[cl_n]["fetched_at"] is None      # nothing known before the first check
+    with caplog.at_level(logging.INFO, logger="smartgateway.limits"):
+        assert asyncio.run(plan_limits.poll_all()) >= 3
+    n = usage_calls(watched)
+    a = accounts_view(client)
+    assert [w["key"] for w in a[cl_n]["windows"]] == ["five_hour", "seven_day", "seven_day_sonnet"] and a[cl_n]["windows"][0]["percent"] == 42
+    assert {w["key"]: w["percent"] for w in a[cx_n]["windows"]} == {"five_hour": 30, "seven_day": 80} and a[cx_n]["plan"] == "plus"
+    assert [w["key"] for w in a[go_n]["windows"]] == ["five_hour", "seven_day", "monthly"] and a[cl_n]["fetched_at"] and a[cl_n]["stale"] is False
+    for _ in range(3):                                                         # dashboards poll these: no vendor traffic
+        client.get("/api/limits"); client.get("/api/endpoints")
+    assert usage_calls(watched) == n
+    ep = {e["id"]: e for e in client.get("/api/endpoints").json()}
+    assert ep[cl]["limits"]["windows"][0]["percent"] == 42 and ep[cl]["limits"]["windows"][0]["resets_at"].startswith("2026-11-27T12:00")   # on the endpoint card
+    assert ep[cx]["limits"]["windows"] and ep[go]["limits"]["windows"] and "limits" not in mk_ep_out(client, "plain")
+    assert "42.0%" in caplog.text and "secret" not in caplog.text and "oc-secret" not in caplog.text            # the log carries percentages only
+    assert "secret" not in json.dumps(client.get("/api/limits").json()) and "secret" not in json.dumps(client.get("/api/endpoints").json())
+
+
+def mk_ep_out(client, name):
+    ep, n, _ = mk_ep(name)
+    return [e for e in client.get("/api/endpoints").json() if e["id"] == ep][0]
+
+
+def test_a_failed_check_keeps_the_last_good_numbers_flagged_as_stale_and_backs_off(client, watched):
+    cl, cl_n = account_ep("claude-stale", "claude-oauth", "claude")
+    asyncio.run(plan_limits.poll_all())
+    good = accounts_view(client)[cl_n]
+    assert good["error"] is None and good["windows"][0]["percent"] == 42
+    watched.fail = {"api.anthropic.com"}
+    asyncio.run(plan_limits.poll_all(respect_backoff=False))
+    bad = accounts_view(client)[cl_n]
+    assert bad["stale"] is True and bad["error"] == "Anthropic answered HTTP 500" and bad["windows"] == good["windows"] and bad["last_ok"] == good["fetched_at"]
+    assert "boom" not in json.dumps(bad) and "sk-secret" not in json.dumps(bad)
+    n = usage_calls(watched)
+    asyncio.run(plan_limits.poll_all())                                        # a failing account is left alone for a while
+    assert usage_calls(watched) == n and plan_limits._failures[cl] == 1 and plan_limits._not_before[cl] > time.time() + plan_limits.INTERVAL
+    plan_limits._not_before.clear()
+    asyncio.run(plan_limits.poll_all())                                        # ... then asked again, and a second failure waits longer
+    assert usage_calls(watched) == n + 1 and plan_limits._failures[cl] == 2
+    watched.fail = set()
+    plan_limits._not_before.clear()
+    asyncio.run(plan_limits.poll_all())                                        # recovery clears the flags
+    ok = accounts_view(client)[cl_n]
+    assert ok["error"] is None and ok["stale"] is False and cl not in plan_limits._failures
+
+
+def test_refresh_now_is_rate_limited_and_an_account_without_login_is_not_asked(client, watched):
+    cl, cl_n = account_ep("claude-refresh", "claude-oauth", "claude")
+    dead, dead_n = account_ep("codex-dead2", "codex-oauth", "codex")
+    with Session(db.engine) as s:
+        a = s.get(OAuthAccount, dead); a.needs_login = True; s.add(a); s.commit()
+    r = client.post("/api/limits/refresh").json()
+    rows = {a["name"]: a for a in r["accounts"]}
+    assert rows[cl_n]["windows"] and "sign in" in rows[dead_n]["error"].lower() and rows[dead_n]["windows"] == []
+    n = usage_calls(watched)
+    client.post("/api/limits/refresh"); client.post("/api/limits/refresh")
+    assert usage_calls(watched) == n                                            # within 10 s nothing is asked again
+    assert r["interval"] >= 60 and r["polling"] is True
+
+
+def test_checks_use_the_claude_code_user_agent_only_when_the_identity_switch_is_on(client, watched, monkeypatch):
+    seen = []
+    orig = watched.handler
+
+    def spy(request):
+        if request.url.host == "api.anthropic.com":
+            seen.append(request.headers.get("user-agent", ""))
+        return orig(request)
+    monkeypatch.setattr(proxy, "client", httpx.AsyncClient(transport=httpx.MockTransport(spy)))
+    cl, cl_n = account_ep("claude-ua", "claude-oauth", "claude")
+    monkeypatch.delenv("SG_CLAUDE_CODE_IDENTITY", raising=False)
+    asyncio.run(plan_limits.limits_for(cl, force=True))
+    monkeypatch.setenv("SG_CLAUDE_CODE_IDENTITY", "1")
+    asyncio.run(plan_limits.limits_for(cl, force=True))
+    assert not seen[0].startswith("claude-code") and seen[1].startswith("claude-code")

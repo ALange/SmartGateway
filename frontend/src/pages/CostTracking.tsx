@@ -4,6 +4,7 @@ import { AlertTriangle, ChevronRight, CircleDollarSign, Gauge, Layers, Loader2, 
 import { api, PALETTE } from "../api";
 import { Empty, fmt, PageHeader, Stat } from "../components/ui";
 import { Tabs, useTab } from "../components/Tabs";
+import { barColor, PROVIDER, until } from "../components/PlanLimits";
 
 const RANGES: [string, number][] = [["24 hours", 1], ["7 days", 7], ["30 days", 30], ["90 days", 90]];
 const tip = { contentStyle: { background: "#202024", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, fontSize: 12 }, cursor: { fill: "rgba(255,255,255,0.04)" } };
@@ -23,18 +24,6 @@ const BILLING: Record<string, { label: string; color: string; hint: string }> = 
   unpriced: { label: "No price", color: "#787884", hint: "No price known: local models, or set one in Prices" },
 };
 const Billing = ({ kind }: { kind: string }) => { const b = BILLING[kind] || BILLING.unpriced; return <span className="chip" style={{ color: b.color, background: b.color + "22" }} title={b.hint}>{b.label}</span>; };
-const PROVIDER: Record<string, string> = { "opencode-go": "OpenCode Go", "opencode-zen": "OpenCode Zen", "codex-oauth": "ChatGPT / Codex", "claude-oauth": "Claude" };
-const barColor = (p: number) => (p >= 90 ? "#d9776f" : p >= 70 ? "#e0a458" : "#4cc38a");
-
-/** "in 2 h 14 min" for a reset time. */
-function until(iso: string | null): string {
-  if (!iso) return "";
-  const s = Math.round((new Date(iso).getTime() - Date.now()) / 1000);
-  if (!Number.isFinite(s)) return "";
-  if (s <= 0) return "resetting now";
-  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
-  return "resets in " + (d ? `${d} d ${h} h` : h ? `${h} h ${m} min` : `${Math.max(1, m)} min`);
-}
 
 export default function CostTracking() {
   const [tab, setTab] = useTab(["usage", "limits", "prices"]);
@@ -143,7 +132,7 @@ function Limits() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-[#8e8e9a]">
-        <span>Read live from each vendor when you open this page (cached for a minute; nothing runs in the background and no quota is used).{newest ? ` Updated ${new Date(newest * 1000).toLocaleTimeString()}.` : ""}</span>
+        <span>The gateway checks each vendor in the background every few minutes (reading usage costs no quota) and when you press Refresh; the same numbers appear on the Dashboard and the Endpoints page.{newest ? ` Updated ${new Date(newest * 1000).toLocaleTimeString()}.` : ""}</span>
         <button className="btn" disabled={busy} onClick={() => load(true)}><RefreshCw size={15} className={busy ? "animate-spin" : ""} /> Refresh</button>
       </div>
       {rows.length === 0 && <Empty>No subscriptions yet. Add an OpenCode, ChatGPT / Codex or Claude endpoint to see its plan limits here.</Empty>}

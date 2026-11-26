@@ -1,4 +1,5 @@
 """Sign in with a subscription account (ChatGPT / Codex: device code; Claude: link + pasted code) and list the signed-in accounts."""
+import asyncio
 import secrets
 import time
 from typing import Optional
@@ -7,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
-from ..accounts import AccountError, KIND, LABELS, claude_auth, codex_auth, tokens
+from ..accounts import AccountError, KIND, LABELS, claude_auth, codex_auth, limits as plan_limits, tokens
 from ..api import endpoints as endpoints_api
 from ..db import get_session
 from ..models import Endpoint, Model, OAuthAccount
@@ -82,6 +83,7 @@ async def _complete(p: dict, tok: dict, ident: dict, s: Session) -> dict:
             s.delete(ep)
             s.commit()
             raise HTTPException(400, f"Signed in, but the model list could not be read: {e}")
+    asyncio.create_task(plan_limits.limits_for(ep.id, force=True))   # read its plan usage right away, so the cards are not empty until the next check
     health.status[ep.id] = "online"
     ep.status, ep.last_error = "online", None
     s.add(ep)

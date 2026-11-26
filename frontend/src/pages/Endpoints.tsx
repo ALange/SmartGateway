@@ -4,6 +4,7 @@ import { ALL_CAPS, api } from "../api";
 import { useLive } from "../live";
 import { CapChip, Empty, Modal, PageHeader, StatusDot } from "../components/ui";
 import OAuthAccountDialog, { AccountKind, OAuthAccountFlow } from "../components/OAuthAccountDialog";
+import { LimitBars } from "../components/PlanLimits";
 
 const TYPES: Record<string, { label: string; name: string; base_url: string; keyHint: string; notes: string[] }> = {
   generic: { label: "OpenAI-compatible", name: "", base_url: "", keyHint: "optional", notes: [] },
@@ -80,7 +81,7 @@ export default function Endpoints() {
   const toggle = (id: number) => setOpen((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const { snapshot } = useLive();
   const load = () => api("/api/endpoints").then(setEps);
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); const t = setInterval(load, 60000); return () => clearInterval(t); }, []);   // keeps the plan usage on the cards current
 
   const rescan = async (id: number) => { setBusy(id); try { await api(`/api/endpoints/${id}/rescan`, { method: "POST" }); await load(); } catch (e: any) { alert(e.message); } setBusy(null); };
   const del = async (ep: any) => { if (confirm(`Delete endpoint "${ep.name}" and remove its models from all gateways?`)) { await api(`/api/endpoints/${ep.id}`, { method: "DELETE" }); load(); } };
@@ -116,6 +117,11 @@ export default function Endpoints() {
                   <button className="btn danger" onClick={() => del(ep)}><Trash2 size={15} /></button>
                 </div>
               </div>
+              {"limits" in ep && (
+                <div className="mt-4 rounded-lg border border-white/5 bg-white/[0.02] p-3" data-testid={`plan-usage-${ep.id}`}>
+                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[#787884]">Plan usage</div>
+                  <LimitBars limits={ep.limits} compact />
+                </div>)}
               {open.has(ep.id) && <div className="mt-5 overflow-x-auto scroll-thin">
                 <table className="w-full text-sm">
                   <thead><tr className="text-left text-xs uppercase tracking-wider text-[#787884]">

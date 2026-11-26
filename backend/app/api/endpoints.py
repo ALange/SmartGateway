@@ -41,6 +41,9 @@ def ep_out(ep: Endpoint, s: Session) -> dict:
     if accounts.is_oauth(ep.provider):   # a subscription account: who it is and whether it needs a new sign-in (never the tokens)
         from ..accounts import tokens
         d["account"] = tokens.account_info(ep.id)
+    if ep.provider in ("opencode-go", "codex-oauth", "claude-oauth"):   # latest known plan usage (no vendor call here)
+        from ..accounts import limits as plan_limits
+        d["limits"] = plan_limits.compact(plan_limits.peek(ep.id))
     d["models"] = [m.model_dump() for m in models]
     return d
 

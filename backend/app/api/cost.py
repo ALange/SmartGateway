@@ -185,3 +185,31 @@ async def refresh_prices(s: Session = Depends(get_session)):
             except Exception as ex:  # noqa: BLE001
                 failed.append(f"{e.name}: {str(ex)[:80]}")
     return {"refreshed": done, "failed": failed}
+
+
+# ------------------------------------------------------------------ plan usage for the Dashboard and the Endpoints page
+limits_router = APIRouter(prefix="/api/limits")
+
+
+def _plan_rows(s: Session) -> list:
+    out = []
+    for e in s.exec(select(Endpoint)).all():
+        if e.provider in plan_limits.PLANNED:
+            c = plan_limits.compact(plan_limits.peek(e.id))
+            out.append({"endpoint_id": e.id, "name": e.name, "provider": e.provider, "status": e.status, **(c or {"windows": [], "error": None, "stale": False, "fetched_at": None, "last_ok": None, "note": "", "plan": None})})
+    return out
+
+
+@limits_router.get("")
+def plan_usage(s: Session = Depends(get_session)):
+    """The latest plan usage of every subscription / plan endpoint, as last read by the background check. Never calls a vendor."""
+    return {"interval": plan_limits.INTERVAL, "polling": plan_limits.POLL, "accounts": _plan_rows(s)}
+
+
+@limits_router.post("/refresh")
+async def plan_usage_refresh(s: Session = Depends(get_session)):
+    """Ask the vendors now (at most every 10 s per account) and return the fresh numbers."""
+    for e in s.exec(select(Endpoint)).all():
+        if e.provider in plan_limits.PLANNED:
+            await plan_limits.limits_for(e.id, refresh=True)
+    return {"interval": plan_limits.INTERVAL, "polling": plan_limits.POLL, "accounts": _plan_rows(s)}
