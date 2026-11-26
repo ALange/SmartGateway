@@ -169,3 +169,39 @@ def test_unified_direct_audio_defaults_are_validated_and_only_kept_for_audio_mod
         assert r.status_code == 200 and r.json()["models"][0]["audio_defaults"] is None
     finally:
         client.put("/api/unified", json={"enabled": False, "gateways": [], "models": []})
+
+
+# ------------------------------------------------------------------ what a public model can do (the Playground offers chat / speak / transcribe from this)
+from app.voices import abilities
+
+
+def test_abilities_are_decided_per_upstream_model():
+    assert abilities([["chat", "tools"]]) == {"chat": True, "tts": False, "stt": False, "capabilities": ["chat", "tools"]}
+    assert abilities([["audio", "tts"]])["tts"] and not abilities([["audio", "tts"]])["stt"]       # a TTS model is tagged audio too: not speech-to-text
+    assert abilities([["audio", "chat"]]) == {"chat": True, "tts": False, "stt": True, "capabilities": ["audio", "chat"]}
+    both = abilities([["audio", "tts"], ["audio", "chat"]])                                          # a TTS upstream plus a transcription upstream
+    assert both["tts"] and both["stt"] and both["chat"]
+    assert abilities([]) == {"chat": False, "tts": False, "stt": False, "capabilities": []}
+
+
+def test_gateway_and_unified_output_tell_what_each_name_can_do(client, up):
+    tts, stt, chat = mk(["audio", "tts"]), mk(["audio", "chat"]), mk(["chat"])
+    g = client.post("/api/gateways", json={"name": f"ab-{time.time_ns()}", "models": [
+        {"public_name": "speak", "members": [{"model_id": tts}]}, {"public_name": "listen", "members": [{"model_id": stt}]},
+        {"public_name": "talk", "members": [{"model_id": chat}]}, {"public_name": "all", "members": [{"model_id": tts}, {"model_id": stt}]}]}).json()
+    ab = {m["public_name"]: m["abilities"] for m in g["models"]}
+    assert (ab["speak"]["tts"], ab["speak"]["stt"], ab["speak"]["chat"]) == (True, False, False)
+    assert (ab["listen"]["tts"], ab["listen"]["stt"], ab["listen"]["chat"]) == (False, True, True)
+    assert (ab["talk"]["tts"], ab["talk"]["stt"], ab["talk"]["chat"]) == (False, False, True)
+    assert (ab["all"]["tts"], ab["all"]["stt"]) == (True, True)
+    try:
+        direct_tts = mk(["tts"])
+        r = client.put("/api/unified", json={"enabled": True, "gateways": [{"id": g["id"], "model": "listen", "aliases": ["whisper-1"]}],
+                                             "models": [{"model_id": direct_tts, "name": "kokoro-d", "aliases": ["tts-1"]}]}).json()
+        a = r["model_abilities"]
+        assert a["kokoro-d"]["tts"] and not a["kokoro-d"]["stt"] and a["tts-1"]["tts"]                  # a directly exposed model and its alias
+        gname = g["name"]
+        assert a[gname]["stt"] and a["whisper-1"]["stt"]                                                  # a gateway name resolves to its default model
+        assert a[f"{gname}/speak"]["tts"] and a[f"{gname}/talk"]["chat"] and not a[f"{gname}/talk"]["tts"]
+    finally:
+        client.put("/api/unified", json={"enabled": False, "gateways": [], "models": []})

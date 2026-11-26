@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
-from ..voices import clean_voices, clean_audio_defaults
+from ..voices import abilities, clean_audio_defaults, clean_voices
 from .. import config, guardrails
 from ..db import get_session
 from ..crypto import hash_key
@@ -84,7 +84,7 @@ def gw_out(gw: Gateway, s: Session) -> dict:
             members.append({**mem.model_dump(), "upstream_id": m.upstream_id, "endpoint_id": m.endpoint_id,
                             "endpoint_name": ep.name if ep else "?", "provider": ep.provider if ep else None, "capabilities": m.capabilities, "voices": m.voices or [],
                             "max_slots": m.max_slots})
-        d["models"].append({**gm.model_dump(), "members": members, "capabilities": sorted(caps)})
+        d["models"].append({**gm.model_dump(), "members": members, "capabilities": sorted(caps), "abilities": abilities([x["capabilities"] for x in members])})
     return d
 
 

@@ -81,3 +81,11 @@ def clean_audio_defaults(d, voices=None) -> Optional[dict]:
     if r:
         out["transcription"] = r
     return out or None
+
+
+def abilities(member_caps) -> dict:
+    """What a public model can do, from the capabilities of its upstream models: chat, text-to-speech, speech-to-text. Decided per upstream model:
+    name-based detection tags a TTS model "audio" as well, so only an audio model that is not a TTS model counts as speech-to-text."""
+    caps = [set(c or []) for c in member_caps]
+    return {"chat": any("chat" in c for c in caps), "tts": any("tts" in c for c in caps),
+            "stt": any("audio" in c and "tts" not in c for c in caps), "capabilities": sorted(set().union(*caps)) if caps else []}

@@ -8,8 +8,8 @@ from sqlmodel import select
 from .. import settings_store as st
 from .. import unified
 from ..db import session
-from ..models import Endpoint, Gateway, GatewayModel, Model
-from ..voices import clean_audio_defaults, clean_voices, voice_id
+from ..models import Endpoint, Gateway, GatewayModel, Member, Model
+from ..voices import abilities, clean_audio_defaults, clean_voices, voice_id
 
 router = APIRouter(prefix="/api")
 
@@ -74,6 +74,22 @@ def _clean(aliases: list[str]) -> list[str]:
     return list(seen.values())[:20]
 
 
+def _abilities(aliases: list[dict]) -> dict:
+    """{name: {chat, tts, stt, capabilities}} for every exposed name, from the upstream models behind the gateway model it resolves to."""
+    out: dict = {}
+    with session() as s:
+        for a in aliases:
+            gm = s.exec(select(GatewayModel).where(GatewayModel.gateway_id == a["gateway"].id, GatewayModel.public_name == a["model"])).first()
+            caps = []
+            if gm:
+                for mem in s.exec(select(Member).where(Member.gateway_model_id == gm.id)).all():
+                    m = s.get(Model, mem.model_id)
+                    if m:
+                        caps.append(m.capabilities or [])
+            out[a["alias"]] = abilities(caps)
+    return out
+
+
 def view() -> dict:
     cfg = st.get_all()
     picked = {g["gateway_id"]: g.get("model") for g in cfg["unified_gateways"]}
@@ -94,6 +110,7 @@ def view() -> dict:
             "aliases": extra.get(g.id, []),
         } for g in gws],
         "model_names": [a["alias"] for a in aliases],
+        "model_abilities": _abilities(aliases),   # per name a client can send: can it chat, speak, transcribe
         "models": _direct_models(cfg, aliases),
         "keys": [{"id": k["id"], "name": k["name"], "prefix": k["prefix"], "created_at": k["created_at"]} for k in cfg["unified_keys"]],
     }

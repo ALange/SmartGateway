@@ -124,6 +124,13 @@ value always wins): for text-to-speech a default voice, format (`mp3`, `opus`, `
 default language (transcriptions only, translations are always into English), format and temperature. They apply to `audio/speech`,
 `audio/transcriptions` and `audio/translations`, never to chat requests.
 
+**Playground audio:** pick an audio gateway (or a name on the unified endpoint) in the Playground and it offers what the model can do. A model with
+a text-to-speech upstream gets a *Text to speech* mode (text, voice from the model's voice list, format and speed; the audio plays in the page and can
+be downloaded), a model with a transcription upstream gets *Speech to text* (upload an audio file or record with the microphone, choose language,
+format and transcribe or translate; recording needs https or localhost). Settings left on default use the model's audio defaults, then the
+upstream's. A model that also chats keeps its *Chat* mode; the other controls (system prompt, temperature, cache) are chat-only and hide in the
+audio modes.
+
 ### Council gateways
 A **council** gateway turns several models into one better answer, behind an ordinary `chat/completions` URL (Gateways → **Council** tab).
 It works in three stages:
