@@ -55,7 +55,7 @@ def _check_hash(pw: str, stored: str) -> bool:
     import base64, hmac
     try:
         ln, r, p, salt, h = _parse_hash(stored)
-        if not (MIN_LOG_N <= ln <= 20) or r != 8 or p != 1:    # a stored hash is trusted, but not with unbounded memory
+        if not (MIN_LOG_N <= ln <= MAX_LOG_N) or r != 8 or p != 1:    # a stored hash is trusted, but not with unbounded memory
             return False
         return hmac.compare_digest(_scrypt(pw, base64.b64decode(salt), ln, r, p), base64.b64decode(h))
     except Exception:  # noqa: BLE001
