@@ -99,7 +99,7 @@ Combine upstream models behind one URL with your own public model names. Strateg
 fastest, random, **tiered** (by prompt complexity), plus fallback members and sticky sessions (`X-SG-Session` / `user`). Per model you can
 set a system prompt, default parameters, a max-tokens ceiling, caching and compression. Requests can steer routing with `X-SG-Require`.
 
-**The gateway editor** is split into tabs: *Gateway* (name, slug, defaults), *Models* and *API keys*. Each public model has its own sections, and
+**The gateway editor** is split into two tabs: *Gateway* (name, slug, defaults, and the gateway's API keys underneath) and *Models*. Each public model has its own sections, and
 which ones appear depends on what the model contains: *Upstream models* always; *Routing & fallbacks* from two upstream models on; *Audio* when
 an upstream model does text-to-speech or speech-to-text; *Cache & compression* for chat and embedding models; *Safety* and *Overrides* for chat
 models. A tab that appears because of a change you just made is marked "new", and tabs show a badge when something is set in them.

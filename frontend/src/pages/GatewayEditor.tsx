@@ -19,7 +19,7 @@ export default function GatewayEditor() {
   const [vErr, setVErr] = useState<Record<number, string>>({});
   const [cacheBackend, setCacheBackend] = useState("memory");
   const [f, setF] = useState<any>({ name: "", slug: "", strategy: "least_busy", queue_timeout: 60, max_retries: 2, models: [blankModel()] });
-  const [tab, setTab] = useTab(["general", "models", "keys"], id ? "models" : "general");   // page sections, kept in the URL (?tab=...)
+  const [tab, setTab] = useTab(["general", "models"], id ? "models" : "general");   // page sections, kept in the URL (?tab=...)
   const [sel, setSel] = useState(0);            // which public model is open
   const [mtab, setMtab] = useState("routing");  // which section of it
 
@@ -94,19 +94,26 @@ export default function GatewayEditor() {
         actions={<><button className="btn" onClick={() => nav(-1)}>Cancel</button><button className="btn primary" onClick={save}><Save size={16} /> Save gateway</button></>} />
       {err && <div className="mb-4 rounded-md border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-300">{err}</div>}
 
-      <Tabs items={[["general", `Gateway${nameMissing ? " ⚠" : ""}`], ["models", `Models (${f.models.length})`], ["keys", "API keys"]]} value={tab} onChange={setTab} />
+      <Tabs items={[["general", `Gateway${nameMissing ? " ⚠" : ""}`], ["models", `Models (${f.models.length})`]]} value={tab} onChange={setTab} />
 
       {tab === "general" && (
+        <>
         <div className="card card-pad grid gap-4 md:grid-cols-2">
           <div><label className="lbl">Gateway name</label><input className="input" aria-invalid={nameMissing} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Production" /></div>
           <div><label className="lbl">URL slug</label><input className="input mono" value={f.slug} onChange={(e) => setF({ ...f, slug: e.target.value })} placeholder="auto from name → /gw/<slug>/v1" />
             {f.slug && <div className="mt-1 text-xs text-[#787884]">Clients use <span className="mono">{gwUrl(f.slug)}</span></div>}</div>
           <div><label className="lbl">Default routing strategy</label>
             <select className="input" value={f.strategy} onChange={(e) => setF({ ...f, strategy: e.target.value })}>{Object.entries(STRATEGIES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
-            <div className="mt-1 text-xs text-[#787884]">Each public model can override it under Models → Routing.</div></div>
+            <div className="mt-1 text-xs text-[#787884]">Each public model can override it under Models → Routing & fallbacks.</div></div>
           <div><label className="lbl">Queue timeout (s) when all slots are busy</label><input type="number" className="input" value={f.queue_timeout} onChange={(e) => setF({ ...f, queue_timeout: e.target.value })} /></div>
           <div><label className="lbl">Retries on upstream failure</label><input type="number" className="input" value={f.max_retries} onChange={(e) => setF({ ...f, max_retries: e.target.value })} /></div>
         </div>
+
+        <div className="mt-6">
+          {id ? <KeysPanel gwId={+id} slug={f.slug} models={f.models.map((m: any) => m.public_name).filter(Boolean)} />
+            : <div className="card card-pad text-sm text-[#8e8e9a]">Save the gateway first, then add API keys with rate limits and quotas here.</div>}
+        </div>
+        </>
       )}
 
       {tab === "models" && (
@@ -129,11 +136,6 @@ export default function GatewayEditor() {
                 onChange={(patch) => setModel(si, patch)} setMember={(k, patch) => setMember(si, k, patch)} onAdd={(mid, step) => addMember(si, mid, step)} onDelete={() => removeModel(si)} />
             : <div className="card card-pad text-center text-sm text-[#8e8e9a]">No public models yet. Add one to expose upstream models under your own name.</div>}
         </div>
-      )}
-
-      {tab === "keys" && (
-        id ? <KeysPanel gwId={+id} slug={f.slug} models={f.models.map((m: any) => m.public_name).filter(Boolean)} />
-          : <div className="card card-pad text-sm text-[#8e8e9a]">Save the gateway first, then add API keys with rate limits and quotas here.</div>
       )}
     </div>
   );
